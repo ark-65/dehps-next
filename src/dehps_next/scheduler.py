@@ -97,6 +97,9 @@ class Scheduler:
                 else:
                     self.state(c, loop["id"], "WAITING_FOR_LABEL")
             return
+        if loop["id"] == "mail-forward" or loop["config"].get("externally_sealed"):
+            self.state(c, loop["id"], "WAITING_16_59_VALIDATED_SEAL")
+            return
         completed = c.execute(
             "SELECT * FROM cycles WHERE loop_id=%s ORDER BY draw_at DESC,created_at DESC LIMIT 1",
             (loop["id"],),

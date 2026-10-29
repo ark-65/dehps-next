@@ -11,7 +11,8 @@ CALENDAR = {
     "valid_until": "2026-12-31",
     "weekdays": [1, 3, 6],
     "draw_time": "21:15",
-    "prepare_time": "16:30",
+    "prepare_time": "00:00",
+    "seal_time": "16:59",
     "mail_time": "17:00",
     "deadline_time": "19:30",
     "rules_source": "https://www.swlc.net.cn/lottery/ssq.html?limit=30&view=previous",
@@ -33,6 +34,6 @@ def next_target(latest):
         "day": day,
         **{
             key: datetime.combine(day, time.fromisoformat(CALENDAR[key]), ZONE)
-            for key in ("draw_time", "prepare_time", "mail_time", "deadline_time")
+            for key in ("draw_time", "prepare_time", "seal_time", "mail_time", "deadline_time")
         },
     }

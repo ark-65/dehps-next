@@ -44,6 +44,18 @@ def get(path, optional=False):
         connection.close()
 
 
+def container_image_size(info):
+    image = get(f"/images/{info['Image']}/json", optional=True)
+    if image is not None:
+        return image["Size"]
+    # Docker's containerd store can stop resolving an old config ID after tag replacement.
+    # The container's full rootfs size is a conservative bound including shared base layers.
+    size = info.get("SizeRootFs", 0)
+    if size <= 0:
+        raise RuntimeError("No conservative size for the still-referenced Next container image")
+    return size
+
+
 def retire_images():
     ledger_path = ROOT / "runtime/host/image-gc.json"
     ledger = (
@@ -143,7 +155,7 @@ def sample():
             "oom_killed": info["State"].get("OOMKilled", False),
             "writable_bytes": info.get("SizeRw", 0),
         }
-        images[info["Image"]] = get(f"/images/{info['Image']}/json")["Size"]
+        images[info["Image"]] = container_image_size(info)
     # Include registered build images, and the fixed dependency cache; never prune shared Docker state.
     for image in get("/images/json?filters=%7B%22label%22%3A%5B%22io.dehps-next.owner%3Ddehps-next%22%5D%7D"):
         images[image["Id"]] = image["Size"]
@@ -157,7 +169,7 @@ def sample():
             "writable_bytes": development.get("SizeRw", 0),
             "running": development["State"]["Running"],
         }
-        images[development["Image"]] = get(f"/images/{development['Image']}/json")["Size"]
+        images[development["Image"]] = container_image_size(development)
     base = get("/images/dehps-next-dependencies:p0p1/json")
     images[base["Id"]] = base["Size"]
     df = get("/system/df")

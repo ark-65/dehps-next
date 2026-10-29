@@ -163,9 +163,11 @@ def fit_prior(prior, spec, seed, pulse, initial=None):
     return red, blue, payload
 
 
-def compute_node(snapshot, spec, protocol, pulse, checkpoint, saved=None, initial=None, seconds=600):
+def compute_node(
+    snapshot, spec, protocol, pulse, checkpoint, saved=None, initial=None, seconds=600, include_reserve=True
+):
     matrix = vectors(snapshot["rows"])
-    all_origins = sorted(set(protocol["origins"] + protocol["reserve"]))
+    all_origins = sorted(protocol["origins"]) + (sorted(protocol["reserve"]) if include_reserve else [])
     identity = digest([spec, protocol["digest"], snapshot["cutoff"]])
     rows = []
     if saved:
@@ -210,16 +212,28 @@ def compute_node(snapshot, spec, protocol, pulse, checkpoint, saved=None, initia
     # A current anchor is never reused for historical-origin validation.
     _, _, anchor = fit_prior(matrix, spec, protocol["seed"], pulse, initial=initial)
     anchor["through_issue"] = snapshot["rows"][-1]["issue"]
+    publication = anchor
+    if anchor["inherited"]:
+        # Historical scores start fresh at every origin. Publish that same training procedure,
+        # while retaining the inherited optimizer/RNG anchor for the research branch itself.
+        _, _, publication = fit_prior(matrix, spec, protocol["seed"], pulse)
+        publication["through_issue"] = anchor["through_issue"]
     return (
         rows,
         encode_torch(anchor),
+        encode_torch(publication),
         {
             "seconds_this_attempt": round(time.monotonic() - start, 4),
             "resumed_origins": restored_origins,
             "origin_fits_executed_this_attempt": len(all_origins) - restored_origins,
-            "gradient_steps_executed_this_attempt": (len(all_origins) - restored_origins + 1)
+            "gradient_steps_executed_this_attempt": (
+                len(all_origins) - restored_origins + 1 + int(anchor["inherited"])
+            )
             * spec["epochs"],
-            "committed_origin_and_anchor_steps": len(all_origins) * spec["epochs"] + spec["epochs"],
+            "committed_origin_and_anchor_steps": (len(all_origins) + 1 + int(anchor["inherited"]))
+            * spec["epochs"],
+            "publication_anchor_fresh": not publication["inherited"],
+            "publication_weight_digest": publication["weight_digest"],
             "step_count_scope": "unique_completed_fits;excludes_interrupted_or_recomputed_work",
             "anchor_weight_digest": anchor["weight_digest"],
             "anchor_optimizer_digest": anchor["optimizer_digest"],
@@ -252,4 +266,41 @@ def restore_anchor(data):
         "rng_digest": state_hash(torch.get_rng_state()),
         "mathematical_digest": anchor.get("mathematical_digest"),
         "through_issue": anchor["through_issue"],
+    }
+
+
+def predict_anchor(data, rows):
+    """Infer the exact selected anchor, retaining its FFT/ridge/Newton transformation."""
+    restore_anchor(data)
+    anchor = load_torch(data)
+    spec = anchor["spec"]
+    if anchor["through_issue"] != rows[-1]["issue"]:
+        raise DomainError("ANCHOR_DATA_CHANGED", "Current anchor must cover exactly the validated dataset")
+    model = RedBlueNet(Recipe(window=spec["window"], hidden=spec["hidden"]))
+    model.load_state_dict(anchor["model"])
+    model.eval()
+    matrix = vectors(rows)
+    with torch.no_grad():
+        red_logits, blue_logits = model(
+            torch.from_numpy(_features(matrix[-spec["window"] :][None], spec["method"]))
+        )
+        red = torch.sigmoid(red_logits)[0].clamp(1e-7, 1 - 1e-7).numpy()
+        blue = torch.softmax(blue_logits, 1)[0].numpy()
+        math_state = anchor["mathematical"]
+        if spec["method"] == "ridge":
+            query = np.append(matrix[-spec["window"] :].mean(0), 1)
+            adjustment = query @ math_state["coefficients"].numpy()
+            red = np.clip(red + math_state["blend"] * adjustment[:33], 1e-7, 1 - 1e-7)
+            blue = np.clip(blue + math_state["blend"] * adjustment[33:], 1e-7, None)
+            blue /= blue.sum()
+        elif spec["method"] == "newton":
+            blue = torch.softmax(blue_logits / math_state["temperature"], 1)[0].numpy()
+    from .domain import top_red_combinations
+
+    return {
+        "red_probabilities": red.tolist(),
+        "blue_probabilities": blue.tolist(),
+        "blue_top1": int(blue.argmax()) + 1,
+        "red_top100": top_red_combinations(red.tolist()),
+        "ranking_score": "sum_of_marginal_log_odds_not_joint_probability",
     }

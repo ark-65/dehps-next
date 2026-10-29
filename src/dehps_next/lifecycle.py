@@ -75,6 +75,8 @@ class Lifecycle:
         for table, column in (("sources", "artifact"), ("models", "artifact")):
             for row in c.execute(f"SELECT {column} FROM {table}"):
                 add(row[column], True)
+        for row in c.execute("SELECT evidence FROM forecast_selections"):
+            add(row["evidence"], True)
         core_datasets = {r["dataset_id"] for r in c.execute("SELECT DISTINCT dataset_id FROM cycles")}
         campaigns = c.execute("SELECT * FROM research_campaigns ORDER BY created_at DESC").fetchall()
         keep_campaigns = {

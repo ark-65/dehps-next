@@ -50,7 +50,7 @@ def main():
     research.add_argument("--name", required=True)
     research.add_argument("--planner", choices=["rules", "local"], default="rules")
     research.add_argument("--max-nodes", type=int, default=3)
-    research.add_argument("--recent", type=int, default=60)
+    research.add_argument("--recent", type=int, default=100)
     research.add_argument("--historical", type=int, default=200)
     research_status = commands.add_parser("research-status")
     research_status.add_argument("--name", required=True)
@@ -59,10 +59,11 @@ def main():
     research_stop.add_argument("--reason", required=True)
     program = commands.add_parser("program-enable")
     program.add_argument("--name", required=True)
-    program.add_argument("--interval", type=int, default=1800)
-    program.add_argument("--max-daily", type=int, default=3)
-    program.add_argument("--max-nodes", type=int, default=3)
+    program.add_argument("--interval", type=int, default=30)
+    program.add_argument("--max-daily", type=int, default=12)
+    program.add_argument("--max-nodes", type=int, default=8)
     program.add_argument("--planner", choices=["local", "rules"], default="local")
+    program.add_argument("--seed-program")
     gc = commands.add_parser("gc")
     gc.add_argument("--apply", action="store_true")
     disable = commands.add_parser("program-disable")
@@ -103,7 +104,7 @@ def main():
     try:
         if args.command == "init":
             db.migrate()
-            output({"schema": 5, "status": "initialized", "runtime": str(settings.runtime)})
+            output({"schema": 6, "status": "initialized", "runtime": str(settings.runtime)})
         elif args.command in ("reporter", "report-prepare", "report-acceptance"):
             from .reports import Reports
 
@@ -131,6 +132,7 @@ def main():
                     max_daily=args.max_daily,
                     max_nodes=args.max_nodes,
                     planner=args.planner,
+                    seed_program=args.seed_program,
                 )
             )
         elif args.command == "gc":
