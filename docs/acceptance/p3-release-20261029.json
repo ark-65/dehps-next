@@ -20,78 +20,82 @@
   "active_reservations": [],
   "host_capacity": {
     "accounting": "logical image sizes and configured log maxima are conservative; all shared build cache charged to total upper bound",
-    "at": "2026-10-29T05:58:02.660633+00:00",
+    "at": "2026-10-29T06:02:02.655984+00:00",
     "categories": {
-      "application": 55248719,
+      "application": 55252072,
       "backups": 0,
       "database": 92416515,
-      "environment": 12401104423,
+      "environment": 12578050300,
       "inference": 1359301170,
       "logs": 110100480,
-      "staging": 559715
+      "staging": 586047
     },
     "complete": true,
     "containers": {
+      "dehps-next-dev": {
+        "running": true,
+        "writable_bytes": 1202610176
+      },
       "dehps-next-inference": {
-        "cpu_ns": 2750104458000,
-        "memory": 12009472,
+        "cpu_ns": 2750108295000,
+        "memory": 10436608,
         "oom_killed": false,
         "running": true,
         "writable_bytes": 12288
       },
       "dehps-next-p0p1-api-1": {
-        "cpu_ns": 1869110000,
-        "memory": 180899840,
+        "cpu_ns": 2267401000,
+        "memory": 182087680,
         "oom_killed": false,
         "running": true,
         "writable_bytes": 20480
       },
       "dehps-next-p0p1-database-1": {
-        "cpu_ns": 181823284000,
-        "memory": 179879936,
+        "cpu_ns": 185425005000,
+        "memory": 181809152,
         "oom_killed": false,
         "running": true,
         "writable_bytes": 20480
       },
       "dehps-next-p0p1-planner-1": {
-        "cpu_ns": 3447901000,
-        "memory": 245530624,
+        "cpu_ns": 4136531000,
+        "memory": 245891072,
         "oom_killed": false,
         "running": true,
         "writable_bytes": 20480
       },
       "dehps-next-p0p1-source-1": {
-        "cpu_ns": 1087709000,
+        "cpu_ns": 1088169000,
         "memory": 167944192,
         "oom_killed": false,
         "running": true,
         "writable_bytes": 20480
       },
       "dehps-next-p0p1-steward-1": {
-        "cpu_ns": 1683798000,
-        "memory": 169607168,
+        "cpu_ns": 1929939000,
+        "memory": 169504768,
         "oom_killed": false,
         "running": true,
         "writable_bytes": 20480
       },
       "dehps-next-p0p1-worker-1": {
-        "cpu_ns": 49953863000,
-        "memory": 265490432,
+        "cpu_ns": 50862433000,
+        "memory": 265416704,
         "oom_killed": false,
         "running": true,
         "writable_bytes": 20480
       }
     },
-    "disk_free": 523365400576,
+    "disk_free": 523364704256,
     "disk_total": 1005867986944,
     "image_gc": {
       "candidates": 0,
       "deleted_lifetime": 1
     },
     "logical_cpus": 22,
-    "memory_available": 27436396544,
+    "memory_available": 27435831296,
     "memory_total": 32551383040,
-    "owned_upper_bytes": 25090737831,
+    "owned_upper_bytes": 26470433341,
     "owner": "dehps-next",
     "shared_build_cache_upper_bytes": 11070905225
   },
@@ -107,13 +111,13 @@
       }
     ]
   },
-  "sampling_history_count": 56,
+  "sampling_history_count": 72,
   "models": 15,
   "draws": {
     "count": 3520,
     "latest_issue": "2026123"
   },
-  "owned_artifact_bytes": 55248719,
+  "owned_artifact_bytes": 55252072,
   "authenticated_status": "PASS",
   "compatibility": "After full behavior acceptance only status display changed; current normal program completed its first three-node activity on this release"
 }
