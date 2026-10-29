@@ -1,0 +1,95 @@
+{
+  "code_digest": "e3c6b77e7446e4c93298d117746f9faa0d59ae6a69ddf350c7699d82998478fa",
+  "model_summary": {
+    "models": 13,
+    "changed_models": 13,
+    "parameters": 106801,
+    "gradient_steps": 260
+  },
+  "consumptions": [
+    {
+      "issue": "2026112",
+      "purpose": "PREDICT",
+      "label_count": 3492,
+      "new_labels": 3492
+    },
+    {
+      "issue": "2026113",
+      "purpose": "PREDICT",
+      "label_count": 3493,
+      "new_labels": 1
+    },
+    {
+      "issue": "2026114",
+      "purpose": "PREDICT",
+      "label_count": 3494,
+      "new_labels": 1
+    },
+    {
+      "issue": "2026115",
+      "purpose": "PREDICT",
+      "label_count": 3495,
+      "new_labels": 1
+    },
+    {
+      "issue": "2026116",
+      "purpose": "PREDICT",
+      "label_count": 3496,
+      "new_labels": 1
+    },
+    {
+      "issue": "2026117",
+      "purpose": "PREDICT",
+      "label_count": 3497,
+      "new_labels": 1
+    },
+    {
+      "issue": "2026118",
+      "purpose": "PREDICT",
+      "label_count": 3498,
+      "new_labels": 1
+    },
+    {
+      "issue": "2026119",
+      "purpose": "PREDICT",
+      "label_count": 3499,
+      "new_labels": 1
+    },
+    {
+      "issue": "2026120",
+      "purpose": "PREDICT",
+      "label_count": 3500,
+      "new_labels": 1
+    },
+    {
+      "issue": "2026121",
+      "purpose": "PREDICT",
+      "label_count": 3501,
+      "new_labels": 1
+    },
+    {
+      "issue": "2026122",
+      "purpose": "PREDICT",
+      "label_count": 3502,
+      "new_labels": 1
+    },
+    {
+      "issue": "2026123",
+      "purpose": "PREDICT",
+      "label_count": 3503,
+      "new_labels": 1
+    },
+    {
+      "issue": "2026123",
+      "purpose": "REFIT",
+      "label_count": 3504,
+      "new_labels": 1
+    }
+  ],
+  "latest_through_issue": "2026123",
+  "latest_model_id": "e3ddc3d99762e3919c82bc005a7400c131ef938cf8a0fb9d1475d9ccd74e4454",
+  "latest_weight_recomputed": "96c23987204fb05cec0d68ee9f5820ca65b8eca30fa906860c1c2dba04021e7d",
+  "latest_weight_matches_manifest": true,
+  "forward_predictions": 0,
+  "failed_jobs": 0
+}

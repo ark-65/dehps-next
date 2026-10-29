@@ -1,0 +1,98 @@
+{
+  "code_digest": "e3c6b77e7446e4c93298d117746f9faa0d59ae6a69ddf350c7699d82998478fa",
+  "loops": [
+    {
+      "id": "history-p1",
+      "mode": "REPLAY",
+      "state": "WAITING_FOR_DATA",
+      "config": {
+        "goal": "P1_RED_BLUE_CONTINUOUS_LEARNING",
+        "recipe": {
+          "seed": 1729,
+          "epochs": 20,
+          "hidden": 128,
+          "window": 16,
+          "learning_rate": 0.002
+        },
+        "protocol": "prequential-v1",
+        "bootstrap": 3508,
+        "max_cycles": 64,
+        "code_digest": "e3c6b77e7446e4c93298d117746f9faa0d59ae6a69ddf350c7699d82998478fa"
+      },
+      "updated_at": "2026-10-29T02:44:10.786030+00:00",
+      "evaluated_issues": 12,
+      "blue_top1_hits": 0,
+      "blue_top1_rate": 0.0,
+      "blue_50_percent_evidence": "NOT_ESTABLISHED",
+      "evaluation_protocol": {
+        "type": "descriptive_prequential_audit_not_independent_research_validation",
+        "recent_issues": [
+          "2026114",
+          "2026115",
+          "2026116",
+          "2026117",
+          "2026118",
+          "2026119",
+          "2026120",
+          "2026121",
+          "2026122",
+          "2026123"
+        ],
+        "random_historical_issues": [
+          "2026122",
+          "2026112",
+          "2026118",
+          "2026120",
+          "2026119",
+          "2026113",
+          "2026117",
+          "2026123",
+          "2026121",
+          "2026115"
+        ],
+        "seed": 1729,
+        "overlap_not_added_to_sample_count": true,
+        "list_digest": "a70fb59ab38c07126b4802aed2c69a27e298aee6cb1e88bef434e62c2c391f3d",
+        "full_branch_comparison_and_protected_holdout": "P2_PENDING"
+      }
+    }
+  ],
+  "jobs": [
+    {
+      "state": "SUCCEEDED",
+      "kind": "EVALUATE",
+      "count": 12
+    },
+    {
+      "state": "SUCCEEDED",
+      "kind": "TRAIN",
+      "count": 13
+    },
+    {
+      "state": "SUCCEEDED",
+      "kind": "SEAL",
+      "count": 12
+    }
+  ],
+  "workers": [
+    {
+      "id": "f3b3d38b0df0",
+      "heartbeat_at": "2026-10-29T02:44:10.794997+00:00",
+      "state": "IDLE",
+      "current_job": null,
+      "error_code": null
+    }
+  ],
+  "draws": {
+    "count": 3520,
+    "latest_issue": "2026123"
+  },
+  "models": 13,
+  "new_label_consumptions": 3504,
+  "owned_artifact_bytes": 29324158,
+  "artifact_quota_bytes": 268435456,
+  "database_bytes": 22296243,
+  "storage_scope": "P1 artifact bound only; whole-host envelope and TTL GC are P3 pending",
+  "full_autonomous_research": "P2_PENDING",
+  "legacy_access": "NONE"
+}
