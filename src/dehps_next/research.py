@@ -8,7 +8,7 @@ from psycopg.types.json import Jsonb
 from .data import DataService
 from .domain import digest
 from .errors import DomainError
-from .release import code_identity
+from .release import code_identity, numeric_identity
 from .research_compute import compute_node, restore_anchor, validate_spec
 from .research_protocol import make_protocol, review, summary
 
@@ -66,6 +66,7 @@ class Research:
             "topic": topic,
             "numeric_threads": self.db.settings.threads,
             "code_digest": code_identity(),
+            "numeric_digest": numeric_identity(),
             "node_seconds": 600,
             "recent": recent,
             "historical": historical,
@@ -115,6 +116,12 @@ class Research:
             VALUES(%s,%s,%s,%s,%s,%s)""",
             (identity, campaign, path, parent, Jsonb(spec), Jsonb(hypothesis)),
         )
+        from .research_memory import remember
+
+        campaign_row = c.execute(
+            "SELECT dataset_id FROM research_campaigns WHERE id=%s", (campaign,)
+        ).fetchone()
+        remember(c, campaign_row["dataset_id"], numeric_identity(), spec)
         self.job(c, identity, "RESEARCH_EVALUATE")
         c.execute(
             "UPDATE research_campaigns SET status='EVALUATING',updated_at=now() WHERE id=%s", (campaign,)
@@ -174,11 +181,31 @@ class Research:
                 node["spec"],
                 node["protocol"]["digest"],
                 node["dataset_artifact"]["sha256"],
-                node["config"]["code_digest"],
+                node["config"].get("numeric_digest", node["config"]["code_digest"]),
                 node["config"].get("numeric_threads", 2),
             ]
         )
         cached = self.db.rows("SELECT artifact FROM research_score_cache WHERE id=%s", (cache_key,))
+        verified_reuse = False
+        if saved is None and not cached:
+            cached = self.db.rows(
+                """SELECT n.evaluation->'scores' AS artifact FROM research_nodes n
+                JOIN research_campaigns r ON r.id=n.campaign_id JOIN datasets ds ON ds.id=r.dataset_id
+                LEFT JOIN numeric_releases nr ON nr.release_digest=r.config->>'code_digest'
+                JOIN artifact_catalog ac ON ac.path=n.evaluation->'scores'->>'path' AND ac.state!='DELETED'
+                WHERE coalesce(r.config->>'numeric_digest',nr.numeric_digest)=%s AND n.spec=%s
+                AND r.protocol->>'digest'=%s AND ds.artifact->>'sha256'=%s
+                AND (r.config->>'numeric_threads')::int=%s AND n.evaluation IS NOT NULL
+                ORDER BY n.completed_at DESC LIMIT 1""",
+                (
+                    numeric_identity(),
+                    Jsonb(node["spec"]),
+                    node["protocol"]["digest"],
+                    node["dataset_artifact"]["sha256"],
+                    node["config"].get("numeric_threads", 2),
+                ),
+            )
+            verified_reuse = bool(cached)
         if saved is None and cached:
             saved = decode(self.artifacts.read(cached[0]["artifact"]))
             saved["identity"] = digest([node["spec"], node["protocol"]["digest"], snapshot["cutoff"]])
@@ -257,7 +284,13 @@ class Research:
         execution["finite_reserve_extension"] = extra
         execution["reserve_fits_available"] = sum(r["origin"] in node["protocol"]["reserve"] for r in scores)
         execution["history_source"] = (
-            "TASK_CHECKPOINT" if job["checkpoint"] else "SHARED_SCORE_CACHE" if cached else "FRESH_PRIOR_FITS"
+            "TASK_CHECKPOINT"
+            if job["checkpoint"]
+            else "VERIFIED_NUMERIC_EQUIVALENT_SCORES"
+            if verified_reuse
+            else "SHARED_SCORE_CACHE"
+            if cached
+            else "FRESH_PRIOR_FITS"
         )
         score_ref = self.artifacts.write(encode(scores), category="research/scores")
         anchor_ref = self.artifacts.write(anchor_bytes, category="research/anchors")
@@ -285,6 +318,16 @@ class Research:
                 """UPDATE research_nodes SET evaluation=%s,anchor=%s,decision=%s,status=%s,
                 completed_at=now() WHERE id=%s""",
                 (Jsonb(evaluation), Jsonb(anchor_ref), Jsonb(verdict), verdict["verdict"], node["id"]),
+            )
+            from .research_memory import remember
+
+            remember(
+                c,
+                node["dataset_id"],
+                numeric_identity(),
+                node["spec"],
+                verdict["verdict"],
+                evaluation["summary"],
             )
             if verdict["verdict"] in ("ACCEPT_BASELINE", "ACCEPT_IMPROVEMENT"):
                 c.execute(

@@ -134,10 +134,9 @@ def propose(campaign, nodes, pulse, db, artifacts, job):
     attempted = {n["spec"]["method"] for n in nodes if n["parent_id"] is not None}
     methods = (campaign["config"].get("topic") or {}).get("methods", ["fft", "ridge", "newton"])
     allowed = [m for m in methods if m not in attempted] or methods
-    known = db.rows(
-        "SELECT n.spec FROM research_nodes n JOIN research_campaigns r ON r.id=n.campaign_id WHERE r.dataset_id=%s AND r.config->>'code_digest'=%s ORDER BY n.created_at LIMIT 2048",
-        (campaign["dataset_id"], campaign["config"]["code_digest"]),
-    )
+    from .research_memory import known_specs
+
+    known = [{"spec": spec} for spec in known_specs(db, campaign["dataset_id"])]
     # Named method slots make diversity a grammar constraint, not a prose request.
     slots = {m: (m, [8, 16, 24, 32]) for m in allowed}
     if len(allowed) == 1:

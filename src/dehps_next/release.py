@@ -12,3 +12,29 @@ def code_identity():
             h.update(str(path.relative_to(root)).encode())
             h.update(path.read_bytes())
     return h.hexdigest()
+
+
+@cache
+def numeric_identity():
+    import numpy as np
+    import torch
+
+    from .domain import digest
+
+    root = Path(__file__).resolve().parent
+    names = [
+        "domain.py",
+        "model.py",
+        "research_compute.py",
+        "research_math.py",
+        "research_protocol.py",
+        "scores.py",
+    ]
+    return digest(
+        {
+            "files": {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in names},
+            "torch": str(torch.__version__),
+            "numpy": np.__version__,
+            "contract": "prior-fit-v1",
+        }
+    )
