@@ -1,3 +1,4 @@
+import os
 import random
 
 from .domain import digest
@@ -25,7 +26,7 @@ def get_status(db, artifacts):
             "seed": 1729,
             "overlap_not_added_to_sample_count": True,
             "list_digest": digest([e["issue"] for e in historical]),
-            "full_branch_comparison_and_protected_holdout": "P2_PENDING",
+            "full_branch_comparison_and_protected_holdout": "RESEARCH_CAMPAIGNS_SEPARATE;PROTECTED_HOLDOUT_PENDING",
         }
     return {
         "code_digest": code_identity(),
@@ -44,6 +45,14 @@ def get_status(db, artifacts):
         "research_campaigns": db.rows(
             "SELECT id,status,selected_node,updated_at FROM research_campaigns ORDER BY created_at"
         ),
-        "full_autonomous_research": "LOCAL_AGENT_CONFIGURATION_REQUIRED",
+        "full_autonomous_research": {
+            "backend": "LOCAL" if os.getenv("DEHPS_NEXT_RESEARCH_URL") else "NOT_CONFIGURED",
+            "model": os.getenv("DEHPS_NEXT_RESEARCH_MODEL", "qwen3:1.7b"),
+            "inference_calls": db.rows(
+                "SELECT state,count(*) AS count FROM research_model_calls GROUP BY state"
+            ),
+            "value_model_versions": db.rows("SELECT count(*) AS n FROM research_policy_versions")[0]["n"],
+            "scope": "BOUNDED_DEVELOPMENT_CAMPAIGNS;NO_LLM_WEIGHT_FINETUNING;NO_FORWARD_PROOF",
+        },
         "legacy_access": "NONE",
     }

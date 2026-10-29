@@ -1,0 +1,1707 @@
+{
+  "campaign": "p2b-local-math-v2-20261029",
+  "status": "BUDGET_EXHAUSTED",
+  "campaign_code_digest": "a3ea42709b20b48b0bb2591e12c17d93bd98744ea08d9fabf210510a15cbe9cb",
+  "audit_runtime_digest": "216d783287bbc6c68d6e5b9d5d22100611e674f662d73763a0f8522d6c7923f8",
+  "compatibility_note": "Final release changes only API readiness/title and honest step-count metadata; scoring unchanged",
+  "dataset_id": "d16f26fb4df00ec6c8b12b3e870a3e06b42c3bff66518cdc7c59956e91446090",
+  "dataset_artifact": {
+    "path": "datasets/d16f26fb4df00ec6c8b12b3e870a3e06b42c3bff66518cdc7c59956e91446090",
+    "bytes": 925147,
+    "sha256": "d16f26fb4df00ec6c8b12b3e870a3e06b42c3bff66518cdc7c59956e91446090"
+  },
+  "history_count": 3520,
+  "through_issue": "2026123",
+  "protocol_digest": "ad8b2ec1c933317b43e476d3f8dc9474d742303e8481e9c2383ceabe7cc18bf6",
+  "primary_unique": 254,
+  "reserve": 40,
+  "nodes": [
+    {
+      "path": "1",
+      "spec": {
+        "epochs": 12,
+        "hidden": 128,
+        "method": "raw",
+        "window": 16,
+        "weight_decay": 0.0,
+        "learning_rate": 0.002,
+        "train_history": 256
+      },
+      "status": "ACCEPT_BASELINE",
+      "evaluation": {
+        "scores": {
+          "path": "research/scores/41815887972160c3054ff1cbaffb429e24a69152c6b5ae4a12d0d47e7ccb9cfb",
+          "bytes": 395883,
+          "sha256": "41815887972160c3054ff1cbaffb429e24a69152c6b5ae4a12d0d47e7ccb9cfb"
+        },
+        "summary": {
+          "n": 254,
+          "red_brier": 0.16820357122137816,
+          "blue_log_loss": 2.9037841682507066,
+          "blue_top1_hits": 18,
+          "blue_top1_rate": 0.07086614173228346
+        },
+        "evidence": "DEVELOPMENT_REPLAY_NOT_FORWARD_OR_PROTECTED_HOLDOUT",
+        "execution": {
+          "resumed_origins": 0,
+          "anchor_weight_digest": "a5a8b2fa182465fa2f42e347bfdac06524bee1b089ed36564e0165541b4e50db",
+          "seconds_this_attempt": 7.0109,
+          "actual_gradient_steps": 3540,
+          "anchor_optimizer_digest": "69fa1d3e4e79e8b5ffdbca0e7a36c222eb2cf14ceec4bd363250f03ffe7c8426",
+          "anchor_mathematical_digest": "2e7a1aa100a1266af873c39d2f4f8cb78a61a87e1c162674bea5e1790c01a07a",
+          "all_origin_parameters_updated": true,
+          "anchor_inherited_compatible_parent": false
+        },
+        "protocol_digest": "ad8b2ec1c933317b43e476d3f8dc9474d742303e8481e9c2383ceabe7cc18bf6"
+      },
+      "decision": {
+        "verdict": "ACCEPT_BASELINE",
+        "protocol_digest": "ad8b2ec1c933317b43e476d3f8dc9474d742303e8481e9c2383ceabe7cc18bf6"
+      },
+      "anchor": {
+        "path": "research/anchors/d2d5f30827ef237f8d9b826e88fbe82a0d5562732b22f9a4df279cb0db0d5940",
+        "bytes": 1294936,
+        "sha256": "d2d5f30827ef237f8d9b826e88fbe82a0d5562732b22f9a4df279cb0db0d5940"
+      },
+      "restored": {
+        "weight_digest": "a5a8b2fa182465fa2f42e347bfdac06524bee1b089ed36564e0165541b4e50db",
+        "optimizer_digest": "69fa1d3e4e79e8b5ffdbca0e7a36c222eb2cf14ceec4bd363250f03ffe7c8426",
+        "rng_restored": true,
+        "rng_digest": "c98fb412e49439d93f9ba5fbd8210d356fd2b6add20d13499ea93044047bdbae",
+        "mathematical_digest": "2e7a1aa100a1266af873c39d2f4f8cb78a61a87e1c162674bea5e1790c01a07a",
+        "through_issue": "2026123"
+      },
+      "recompute": {
+        "origin": 2164,
+        "max_probability_difference": 0.0
+      },
+      "hypothesis": "Frozen prior-only neural baseline",
+      "analysis_of_feedback": null,
+      "selection": null,
+      "candidates": null,
+      "direction_value_model": null
+    },
+    {
+      "path": "1-1",
+      "spec": {
+        "epochs": 12,
+        "hidden": 128,
+        "method": "fft",
+        "window": 16,
+        "weight_decay": 0.001,
+        "learning_rate": 0.002,
+        "train_history": 256
+      },
+      "status": "INCONCLUSIVE",
+      "evaluation": {
+        "scores": {
+          "path": "research/scores/462337bad19acf856722482bf58bc9bc0a515b3a4df77f16e15cf931f9f75651",
+          "bytes": 396738,
+          "sha256": "462337bad19acf856722482bf58bc9bc0a515b3a4df77f16e15cf931f9f75651"
+        },
+        "summary": {
+          "n": 254,
+          "red_brier": 0.15697144177201527,
+          "blue_log_loss": 2.9058355826044835,
+          "blue_top1_hits": 14,
+          "blue_top1_rate": 0.05511811023622047
+        },
+        "evidence": "DEVELOPMENT_REPLAY_NOT_FORWARD_OR_PROTECTED_HOLDOUT",
+        "execution": {
+          "resumed_origins": 0,
+          "anchor_weight_digest": "aac7d22f31c72eb01f1c6073b994facd099ead7753c8bc3e2ea6c7d22e6853cb",
+          "seconds_this_attempt": 8.4813,
+          "actual_gradient_steps": 3540,
+          "anchor_optimizer_digest": "0746daf9f88114ce9412cf8d74237a7d94fbcc88f025ea577d012fe168958322",
+          "anchor_mathematical_digest": "a1d3b3cdc62f9fa939145ebb529821bd381c6b9a150080e75b5f89a75ae3d8d8",
+          "all_origin_parameters_updated": true,
+          "anchor_inherited_compatible_parent": false
+        },
+        "protocol_digest": "ad8b2ec1c933317b43e476d3f8dc9474d742303e8481e9c2383ceabe7cc18bf6"
+      },
+      "decision": {
+        "verdict": "INCONCLUSIVE",
+        "evidence": "DEVELOPMENT_REPLAY_NOT_FORWARD_OR_PROTECTED_HOLDOUT",
+        "n_unique": 294,
+        "recent_delta": 0.019298687086940262,
+        "reserve_used": true,
+        "protocol_digest": "ad8b2ec1c933317b43e476d3f8dc9474d742303e8481e9c2383ceabe7cc18bf6",
+        "red_brier_delta": -0.011295075557957241,
+        "random_historical_delta": -0.00582161543381033,
+        "paired_mean_blue_loss_delta": 0.0015404587334964242,
+        "paired_development_interval95": [
+          -0.038864965676960836,
+          0.04400052918889953
+        ]
+      },
+      "anchor": {
+        "path": "research/anchors/f5007462e1e0a05b12e4767fbbf72e6366de60894d1e6a0d11f6ba88f12b7eb7",
+        "bytes": 1295064,
+        "sha256": "f5007462e1e0a05b12e4767fbbf72e6366de60894d1e6a0d11f6ba88f12b7eb7"
+      },
+      "restored": {
+        "weight_digest": "aac7d22f31c72eb01f1c6073b994facd099ead7753c8bc3e2ea6c7d22e6853cb",
+        "optimizer_digest": "0746daf9f88114ce9412cf8d74237a7d94fbcc88f025ea577d012fe168958322",
+        "rng_restored": true,
+        "rng_digest": "c98fb412e49439d93f9ba5fbd8210d356fd2b6add20d13499ea93044047bdbae",
+        "mathematical_digest": "a1d3b3cdc62f9fa939145ebb529821bd381c6b9a150080e75b5f89a75ae3d8d8",
+        "through_issue": "2026123"
+      },
+      "recompute": {
+        "origin": 2164,
+        "max_probability_difference": 0.0
+      },
+      "hypothesis": "The FFT method does not capture stable periodicity in lottery labels.",
+      "analysis_of_feedback": "The feedback indicates that the model's performance is constrained by the blue log loss and red Brier, with a top1 rate of 7.09%. The protocol_digest suggests a causal-window approach with rFFT, which may not capture stable periodicity in lottery labels. The method_cards include FFT, Newton, and Ridge, each with specific properties that could be falsified by examining their impact on performance.",
+      "selection": {
+        "reason": "The feedback indicates that the model's performance is constrained by the blue log loss and red Brier, with a top1 rate of 7.09%. The protocol_digest suggests a causal-window approach with rFFT, which may not capture stable periodicity in lottery labels. The method_cards include FFT, Newton, and Ridge, each with specific properties that could be falsified by examining their impact on performance.",
+        "selected": 0,
+        "next_if_failed": "The model's performance is constrained by the blue log loss and red Brier, with a top1 rate of 7.09%. The protocol_digest suggests a causal-window approach with rFFT, which may not capture stable periodicity in lottery labels. The method_cards include FFT, Newton, and Ridge, each with specific properties that could be falsified by examining their impact on performance."
+      },
+      "candidates": [
+        {
+          "slot": "fft",
+          "spec": {
+            "epochs": 12,
+            "hidden": 128,
+            "method": "fft",
+            "window": 16,
+            "weight_decay": 0.001,
+            "learning_rate": 0.002,
+            "train_history": 256
+          },
+          "hypothesis": "The FFT method does not capture stable periodicity in lottery labels.",
+          "tool_result": {
+            "tool": "numpy.rfft/irfft",
+            "method": "fft",
+            "version": 1,
+            "evidence": "NUMERICAL_SANITY_ONLY",
+            "limitation": "A known sinusoid does not establish a period in lottery labels",
+            "known_signal_mse_after": 6.602472651294886e-32,
+            "known_signal_mse_before": 0.020000000000000004
+          },
+          "falsification": "The FFT method may not capture stable periodicity in lottery labels, as evidenced by the protocol_digest's mention of retaining bins 0..3.",
+          "estimated_development_reward": -0.0018089115619659424
+        },
+        {
+          "slot": "ridge",
+          "spec": {
+            "epochs": 12,
+            "hidden": 128,
+            "method": "ridge",
+            "window": 16,
+            "weight_decay": 0.001,
+            "learning_rate": 0.002,
+            "train_history": 256
+          },
+          "hypothesis": "The Ridge method introduces bias in predictions.",
+          "tool_result": {
+            "tool": "numpy.linalg.solve",
+            "method": "ridge",
+            "version": 1,
+            "evidence": "NUMERICAL_SANITY_ONLY",
+            "limitation": "Regularization introduces bias; residual head must pass causal replay",
+            "coefficients": [
+              1.7698586502090385,
+              0.5932709536133783
+            ],
+            "normal_equation_residual": 0.0
+          },
+          "falsification": "The Ridge method may introduce bias, as suggested by the protocol_digest's mention of shrinkage in causal window means.",
+          "estimated_development_reward": -0.32040154933929443
+        },
+        {
+          "slot": "newton",
+          "spec": {
+            "epochs": 12,
+            "hidden": 128,
+            "method": "newton",
+            "window": 16,
+            "weight_decay": 0.001,
+            "learning_rate": 0.002,
+            "train_history": 256
+          },
+          "hypothesis": "The Newton method reduces overconfidence in predictions.",
+          "tool_result": {
+            "tool": "damped_newton_log_temperature",
+            "method": "newton",
+            "version": 1,
+            "evidence": "NUMERICAL_SANITY_ONLY",
+            "limitation": "Prior calibration can reduce overconfidence without improving Top1",
+            "temperature": 10.000000000000002,
+            "newton_steps": 12,
+            "prior_calibration_loss_after": 0.7130152523999526,
+            "prior_calibration_loss_before": 2.0181499279178094
+          },
+          "falsification": "The Newton method may reduce overconfidence, as suggested by the protocol_digest's mention of damped temperature on excluded prior calibration tail.",
+          "estimated_development_reward": -0.546445369720459
+        }
+      ],
+      "direction_value_model": {
+        "seed": 1729,
+        "steps": 128,
+        "artifact": {
+          "path": "research/policies/4275908797f94cf1df0340d5629b00f938902696356c31fa43ed1d6c1bf66e78",
+          "bytes": 3997,
+          "sha256": "4275908797f94cf1df0340d5629b00f938902696356c31fa43ed1d6c1bf66e78"
+        },
+        "evidence": "DEVELOPMENT_FEEDBACK_ONLY",
+        "examples": 3,
+        "parent_policy": {
+          "path": "research/policies/e1afbe5b4cb33f5efba0dd28c34a6dafc2ab66ffc5b6fd515f7eace08db53610",
+          "bytes": 3741,
+          "sha256": "e1afbe5b4cb33f5efba0dd28c34a6dafc2ab66ffc5b6fd515f7eace08db53610"
+        },
+        "weight_digest": "42466b40f3267b0c0d586fd174ba7671421c756b9cdb6ec8bd94680a62729664",
+        "example_digest": "98fdc3dc4482f3bf1764d3d64102c58be3c841cea0adac0e1ad09e3557152726",
+        "generalization": "NOT_ESTABLISHED",
+        "parameter_count": 225,
+        "replay_capacity": 128,
+        "parameters_updated": true,
+        "training_loss_after": 2.764807582877893e-08,
+        "training_loss_before": 0.06985302269458771,
+        "initial_weight_digest": "02f28cee9dcdb27fb5d60313479c38c3396bc2b4912181d8464d451933975dee"
+      }
+    },
+    {
+      "path": "1-2",
+      "spec": {
+        "epochs": 12,
+        "hidden": 128,
+        "method": "ridge",
+        "window": 16,
+        "weight_decay": 0.01,
+        "learning_rate": 0.002,
+        "train_history": 256
+      },
+      "status": "INCONCLUSIVE",
+      "evaluation": {
+        "scores": {
+          "path": "research/scores/6cf70b94e31f4e0a01a137bf6e6cf8474ea9a07c8ec87ee3996820ee87f8668b",
+          "bytes": 395916,
+          "sha256": "6cf70b94e31f4e0a01a137bf6e6cf8474ea9a07c8ec87ee3996820ee87f8668b"
+        },
+        "summary": {
+          "n": 254,
+          "red_brier": 0.16439648233905158,
+          "blue_log_loss": 2.905207743740917,
+          "blue_top1_hits": 20,
+          "blue_top1_rate": 0.07874015748031496
+        },
+        "evidence": "DEVELOPMENT_REPLAY_NOT_FORWARD_OR_PROTECTED_HOLDOUT",
+        "execution": {
+          "resumed_origins": 0,
+          "anchor_weight_digest": "15d2bf83b23dcd7283b639d4e551dd0b2bc24a5450838fd5bbfaa6d620944004",
+          "seconds_this_attempt": 10.8374,
+          "actual_gradient_steps": 3540,
+          "anchor_optimizer_digest": "f952dc6cbeedc16a3e567590a803e834e1f8b59f808c7947976959ab613f058d",
+          "anchor_mathematical_digest": "8b6e298c8d38248649d74ed51106cf2be34e194af0b20af7080acd6e85655e28",
+          "all_origin_parameters_updated": true,
+          "anchor_inherited_compatible_parent": false
+        },
+        "protocol_digest": "ad8b2ec1c933317b43e476d3f8dc9474d742303e8481e9c2383ceabe7cc18bf6"
+      },
+      "decision": {
+        "verdict": "INCONCLUSIVE",
+        "evidence": "DEVELOPMENT_REPLAY_NOT_FORWARD_OR_PROTECTED_HOLDOUT",
+        "n_unique": 294,
+        "recent_delta": 0.007046889545374284,
+        "reserve_used": true,
+        "protocol_digest": "ad8b2ec1c933317b43e476d3f8dc9474d742303e8481e9c2383ceabe7cc18bf6",
+        "red_brier_delta": -0.00384569170506797,
+        "random_historical_delta": 0.00024320649585516386,
+        "paired_mean_blue_loss_delta": -0.00019008930766009342,
+        "paired_development_interval95": [
+          -0.008485418681210527,
+          0.007575408149930766
+        ]
+      },
+      "anchor": {
+        "path": "research/anchors/9caa9a06fc6879636a6f03da94ffe609d41b7908278b8fa979bc90ad1dd174d6",
+        "bytes": 1314901,
+        "sha256": "9caa9a06fc6879636a6f03da94ffe609d41b7908278b8fa979bc90ad1dd174d6"
+      },
+      "restored": {
+        "weight_digest": "15d2bf83b23dcd7283b639d4e551dd0b2bc24a5450838fd5bbfaa6d620944004",
+        "optimizer_digest": "f952dc6cbeedc16a3e567590a803e834e1f8b59f808c7947976959ab613f058d",
+        "rng_restored": true,
+        "rng_digest": "c98fb412e49439d93f9ba5fbd8210d356fd2b6add20d13499ea93044047bdbae",
+        "mathematical_digest": "8b6e298c8d38248649d74ed51106cf2be34e194af0b20af7080acd6e85655e28",
+        "through_issue": "2026123"
+      },
+      "recompute": {
+        "origin": 2164,
+        "max_probability_difference": 0.0
+      },
+      "hypothesis": "The ridge method may stabilize the model's predictions but could lead to suboptimal top1 performance due to potential bias from shrinkage.",
+      "analysis_of_feedback": "The feedback indicates that the model's performance is constrained by the development replay, with some evidence of improvement in blue log loss and red Brier, but the top1 rate remains low. The protocol digest is consistent across different runs, suggesting a stable baseline.",
+      "selection": {
+        "reason": "The feedback indicates that the model's performance is constrained by the development replay, with some evidence of improvement in blue log loss and red Brier, but the top1 rate remains low. The protocol digest is consistent across different runs, suggesting a stable baseline.",
+        "selected": 0,
+        "next_if_failed": "The model's performance is constrained by the development replay, and the top1 rate remains low. The protocol digest is consistent across different runs, suggesting a stable baseline."
+      },
+      "candidates": [
+        {
+          "slot": "ridge",
+          "spec": {
+            "epochs": 12,
+            "hidden": 128,
+            "method": "ridge",
+            "window": 16,
+            "weight_decay": 0.01,
+            "learning_rate": 0.002,
+            "train_history": 256
+          },
+          "hypothesis": "The ridge method may stabilize the model's predictions but could lead to suboptimal top1 performance due to potential bias from shrinkage.",
+          "tool_result": {
+            "tool": "numpy.linalg.solve",
+            "method": "ridge",
+            "version": 1,
+            "evidence": "NUMERICAL_SANITY_ONLY",
+            "limitation": "Regularization introduces bias; residual head must pass causal replay",
+            "coefficients": [
+              1.7698586502090385,
+              0.5932709536133783
+            ],
+            "normal_equation_residual": 0.0
+          },
+          "falsification": "The ridge penalty on causal window means may reduce variance but introduce bias, depending on the data distribution.",
+          "estimated_development_reward": -0.27820029854774475
+        },
+        {
+          "slot": "newton",
+          "spec": {
+            "epochs": 12,
+            "hidden": 128,
+            "method": "newton",
+            "window": 16,
+            "weight_decay": 0.001,
+            "learning_rate": 0.002,
+            "train_history": 256
+          },
+          "hypothesis": "The Newton method may improve convergence speed but does not guarantee better top1 performance due to the exclusion of prior calibration tail.",
+          "tool_result": {
+            "tool": "damped_newton_log_temperature",
+            "method": "newton",
+            "version": 1,
+            "evidence": "NUMERICAL_SANITY_ONLY",
+            "limitation": "Prior calibration can reduce overconfidence without improving Top1",
+            "temperature": 10.000000000000002,
+            "newton_steps": 12,
+            "prior_calibration_loss_after": 0.7130152523999526,
+            "prior_calibration_loss_before": 2.0181499279178094
+          },
+          "falsification": "The damped Newton temperature on excluded prior calibration tail may reduce overconfidence, but temperature alone cannot change the argmax.",
+          "estimated_development_reward": -0.5762897729873657
+        }
+      ],
+      "direction_value_model": {
+        "seed": 1729,
+        "steps": 128,
+        "artifact": {
+          "path": "research/policies/0a0614660dac96450895add2023bb847080d34af2328d28c97ae75714fb1e4cd",
+          "bytes": 3997,
+          "sha256": "0a0614660dac96450895add2023bb847080d34af2328d28c97ae75714fb1e4cd"
+        },
+        "evidence": "DEVELOPMENT_FEEDBACK_ONLY",
+        "examples": 4,
+        "parent_policy": {
+          "path": "research/policies/4275908797f94cf1df0340d5629b00f938902696356c31fa43ed1d6c1bf66e78",
+          "bytes": 3997,
+          "sha256": "4275908797f94cf1df0340d5629b00f938902696356c31fa43ed1d6c1bf66e78"
+        },
+        "weight_digest": "80b44ec5dd4a78412b8a75f1a8e5f4c57c7dbbd8c233109579cfab2838401b55",
+        "example_digest": "82630787e660cf922fabef5d552cac1e50cf6f7d15e41ab408e7790275e192fc",
+        "generalization": "NOT_ESTABLISHED",
+        "parameter_count": 225,
+        "replay_capacity": 128,
+        "parameters_updated": true,
+        "training_loss_after": 7.42796473218732e-08,
+        "training_loss_before": 3.5443122214928735e-08,
+        "initial_weight_digest": "42466b40f3267b0c0d586fd174ba7671421c756b9cdb6ec8bd94680a62729664"
+      }
+    },
+    {
+      "path": "1-3",
+      "spec": {
+        "epochs": 12,
+        "hidden": 128,
+        "method": "newton",
+        "window": 16,
+        "weight_decay": 0.001,
+        "learning_rate": 0.002,
+        "train_history": 256
+      },
+      "status": "ACCEPT_IMPROVEMENT",
+      "evaluation": {
+        "scores": {
+          "path": "research/scores/09b8611def0fe04521bd8df06e818d9ed0d8575b66be6f97fce602d2cd81c5e2",
+          "bytes": 395364,
+          "sha256": "09b8611def0fe04521bd8df06e818d9ed0d8575b66be6f97fce602d2cd81c5e2"
+        },
+        "summary": {
+          "n": 254,
+          "red_brier": 0.17013933772444234,
+          "blue_log_loss": 2.7835631397855543,
+          "blue_top1_hits": 20,
+          "blue_top1_rate": 0.07874015748031496
+        },
+        "evidence": "DEVELOPMENT_REPLAY_NOT_FORWARD_OR_PROTECTED_HOLDOUT",
+        "execution": {
+          "resumed_origins": 294,
+          "anchor_weight_digest": "492e4282ee125f96063611cfcbc43551ce103ad188914d0b3676989ec0f28273",
+          "seconds_this_attempt": 7.5511,
+          "actual_gradient_steps": 3540,
+          "anchor_optimizer_digest": "f68e6731ada1dec39708430f07b098548c99cba7e8457c7f0ea43d3b6ad1a1e0",
+          "anchor_mathematical_digest": "51c364b361536f13cdd344805deb5c39d8924bd61dd89698dd6f3c4fa4e3bbe3",
+          "all_origin_parameters_updated": true,
+          "anchor_inherited_compatible_parent": false
+        },
+        "protocol_digest": "ad8b2ec1c933317b43e476d3f8dc9474d742303e8481e9c2383ceabe7cc18bf6"
+      },
+      "decision": {
+        "verdict": "ACCEPT_IMPROVEMENT",
+        "evidence": "DEVELOPMENT_REPLAY_NOT_FORWARD_OR_PROTECTED_HOLDOUT",
+        "n_unique": 254,
+        "recent_delta": -0.15735294478082024,
+        "reserve_used": false,
+        "protocol_digest": "ad8b2ec1c933317b43e476d3f8dc9474d742303e8481e9c2383ceabe7cc18bf6",
+        "red_brier_delta": 0.0019357665030642044,
+        "random_historical_delta": -0.1113133316494536,
+        "paired_mean_blue_loss_delta": -0.12022102846515229,
+        "paired_development_interval95": [
+          -0.16362470609308052,
+          -0.071093773900768
+        ]
+      },
+      "anchor": {
+        "path": "research/anchors/739b8b9d6602487225cfb34535df32a7dd848c8a34a1377586e94c92f668d66b",
+        "bytes": 1295128,
+        "sha256": "739b8b9d6602487225cfb34535df32a7dd848c8a34a1377586e94c92f668d66b"
+      },
+      "restored": {
+        "weight_digest": "492e4282ee125f96063611cfcbc43551ce103ad188914d0b3676989ec0f28273",
+        "optimizer_digest": "f68e6731ada1dec39708430f07b098548c99cba7e8457c7f0ea43d3b6ad1a1e0",
+        "rng_restored": true,
+        "rng_digest": "c98fb412e49439d93f9ba5fbd8210d356fd2b6add20d13499ea93044047bdbae",
+        "mathematical_digest": "51c364b361536f13cdd344805deb5c39d8924bd61dd89698dd6f3c4fa4e3bbe3",
+        "through_issue": "2026123"
+      },
+      "recompute": {
+        "origin": 2164,
+        "max_probability_difference": 0.0
+      },
+      "hypothesis": "The short window method does not retain the same periodicity in the labels, leading to unstable performance.",
+      "analysis_of_feedback": "The feedback indicates that the model's performance is mixed. The baseline model shows a blue log loss of 2.90378 and a red brier of 0.1682, while the development replay models show varying performance with blue log loss ranging from 2.90378 to 2.90584 and red brier ranging from 0.1682 to 0.1644. The top1 rate varies between 0.0709 and 0.0787, and the number of unique samples is consistent across models.",
+      "selection": {
+        "reason": "The feedback indicates that the model's performance is mixed. The baseline model has a blue log loss of 2.90378 and a red brier of 0.1682, while the development replay models show varying performance with blue log loss ranging from 2.90378 to 2.90584 and red brier ranging from 0.1682 to 0.1644. The top1 rate varies between 0.0709 and 0.0787, and the number of unique samples is consistent across models.",
+        "selected": 0,
+        "next_if_failed": "The feedback indicates that the model's performance is mixed, and the development replay models show varying performance. The baseline model has a blue log loss of 2.90378 and a red brier of 0.1682, while the development replay models show varying performance with blue log loss ranging from 2.90378 to 2.90584 and red brier ranging from 0.1682 to 0.1644. The top1 rate varies between 0.0709 and 0.07"
+      },
+      "candidates": [
+        {
+          "slot": "short_window",
+          "spec": {
+            "epochs": 12,
+            "hidden": 128,
+            "method": "newton",
+            "window": 16,
+            "weight_decay": 0.001,
+            "learning_rate": 0.002,
+            "train_history": 256
+          },
+          "hypothesis": "The short window method does not retain the same periodicity in the labels, leading to unstable performance.",
+          "tool_result": {
+            "tool": "damped_newton_log_temperature",
+            "method": "newton",
+            "version": 1,
+            "evidence": "NUMERICAL_SANITY_ONLY",
+            "limitation": "Prior calibration can reduce overconfidence without improving Top1",
+            "temperature": 10.000000000000002,
+            "newton_steps": 12,
+            "prior_calibration_loss_after": 0.7130152523999526,
+            "prior_calibration_loss_before": 2.0181499279178094
+          },
+          "falsification": "The short window method may not retain the same periodicity in the labels, leading to unstable performance.",
+          "estimated_development_reward": -0.5389932990074158
+        },
+        {
+          "slot": "long_window",
+          "spec": {
+            "epochs": 12,
+            "hidden": 128,
+            "method": "newton",
+            "window": 32,
+            "weight_decay": 0.01,
+            "learning_rate": 0.002,
+            "train_history": 256
+          },
+          "hypothesis": "The long window method does not retain the same periodicity in the labels, leading to unstable performance.",
+          "tool_result": {
+            "tool": "damped_newton_log_temperature",
+            "method": "newton",
+            "version": 1,
+            "evidence": "NUMERICAL_SANITY_ONLY",
+            "limitation": "Prior calibration can reduce overconfidence without improving Top1",
+            "temperature": 10.000000000000002,
+            "newton_steps": 12,
+            "prior_calibration_loss_after": 0.7130152523999526,
+            "prior_calibration_loss_before": 2.0181499279178094
+          },
+          "falsification": "The long window method may not retain the same periodicity in the labels, leading to unstable performance.",
+          "estimated_development_reward": -0.5806713104248047
+        }
+      ],
+      "direction_value_model": {
+        "seed": 1729,
+        "steps": 128,
+        "artifact": {
+          "path": "research/policies/656343fd7df38562ef29fa1fff64f088060bf4677c6ccf6623bc564062684da0",
+          "bytes": 3997,
+          "sha256": "656343fd7df38562ef29fa1fff64f088060bf4677c6ccf6623bc564062684da0"
+        },
+        "evidence": "DEVELOPMENT_FEEDBACK_ONLY",
+        "examples": 5,
+        "parent_policy": {
+          "path": "research/policies/0a0614660dac96450895add2023bb847080d34af2328d28c97ae75714fb1e4cd",
+          "bytes": 3997,
+          "sha256": "0a0614660dac96450895add2023bb847080d34af2328d28c97ae75714fb1e4cd"
+        },
+        "weight_digest": "0398752689f2aa7482d5fec98887193214942be1283f938dc3750efa4333fb0d",
+        "example_digest": "62c5b0c0d9b95bc777bed81f0cd60b71b7122f260c9e053f45407817b546a190",
+        "generalization": "NOT_ESTABLISHED",
+        "parameter_count": 225,
+        "replay_capacity": 128,
+        "parameters_updated": true,
+        "training_loss_after": 1.1740208805122165e-07,
+        "training_loss_before": 0.015321138314902782,
+        "initial_weight_digest": "80b44ec5dd4a78412b8a75f1a8e5f4c57c7dbbd8c233109579cfab2838401b55"
+      }
+    }
+  ],
+  "final_runtime_anchor_resume_recheck": {
+    "seconds_this_attempt": 0.047,
+    "resumed_origins": 294,
+    "committed_origin_and_anchor_steps": 3540,
+    "step_count_scope": "unique_completed_fits;excludes_interrupted_or_recomputed_work",
+    "anchor_weight_digest": "492e4282ee125f96063611cfcbc43551ce103ad188914d0b3676989ec0f28273",
+    "anchor_optimizer_digest": "f68e6731ada1dec39708430f07b098548c99cba7e8457c7f0ea43d3b6ad1a1e0",
+    "anchor_mathematical_digest": "51c364b361536f13cdd344805deb5c39d8924bd61dd89698dd6f3c4fa4e3bbe3",
+    "anchor_inherited_compatible_parent": false,
+    "all_origin_parameters_updated": true
+  },
+  "descriptive_baselines_same_primary_origins": {
+    "uniform": {
+      "n": 254,
+      "blue_log_loss": 2.7725887222397816,
+      "red_brier": 0.1487603305785124,
+      "blue_top1_hits": 20,
+      "blue_top1_rate": 0.07874015748031496
+    },
+    "prior_frequency_256_laplace": {
+      "n": 254,
+      "blue_log_loss": 2.8035921805077404,
+      "red_brier": 0.14907821490774004,
+      "blue_top1_hits": 17,
+      "blue_top1_rate": 0.06692913385826772
+    }
+  },
+  "baseline_note": "Uniform deterministic Top1 ties select number1; expected random accuracy is 1/16; no baseline used to change frozen verdicts",
+  "model_calls": [
+    {
+      "id": 6,
+      "stage": "HYPOTHESES",
+      "model": "qwen3:1.7b",
+      "model_digest": "8f68893c685c3ddff2aa3fffce2aa60a30bb2da65ca488b61fff134a4d1730e7",
+      "state": "SUCCEEDED",
+      "metrics": {
+        "eval_count": 406,
+        "done_reason": "stop",
+        "wall_seconds": 22.0491,
+        "eval_duration": 16037278000,
+        "load_duration": 1540413468,
+        "total_duration": 22030995237,
+        "prompt_eval_count": 450
+      }
+    },
+    {
+      "id": 7,
+      "stage": "TOOL_FEEDBACK_SELECTION",
+      "model": "qwen3:1.7b",
+      "model_digest": "8f68893c685c3ddff2aa3fffce2aa60a30bb2da65ca488b61fff134a4d1730e7",
+      "state": "SUCCEEDED",
+      "metrics": {
+        "eval_count": 188,
+        "done_reason": "stop",
+        "wall_seconds": 31.8389,
+        "eval_duration": 9426070000,
+        "load_duration": 1486330,
+        "total_duration": 31819489192,
+        "prompt_eval_count": 1646
+      }
+    },
+    {
+      "id": 8,
+      "stage": "HYPOTHESES",
+      "model": "qwen3:1.7b",
+      "model_digest": "8f68893c685c3ddff2aa3fffce2aa60a30bb2da65ca488b61fff134a4d1730e7",
+      "state": "SUCCEEDED",
+      "metrics": {
+        "eval_count": 299,
+        "done_reason": "stop",
+        "wall_seconds": 20.7864,
+        "eval_duration": 13872820000,
+        "load_duration": 1632076,
+        "total_duration": 20772544608,
+        "prompt_eval_count": 836
+      }
+    },
+    {
+      "id": 9,
+      "stage": "TOOL_FEEDBACK_SELECTION",
+      "model": "qwen3:1.7b",
+      "model_digest": "8f68893c685c3ddff2aa3fffce2aa60a30bb2da65ca488b61fff134a4d1730e7",
+      "state": "SUCCEEDED",
+      "metrics": {
+        "eval_count": 110,
+        "done_reason": "stop",
+        "wall_seconds": 29.0743,
+        "eval_duration": 6108877000,
+        "load_duration": 1498136,
+        "total_duration": 29060922537,
+        "prompt_eval_count": 1822
+      }
+    },
+    {
+      "id": 10,
+      "stage": "HYPOTHESES",
+      "model": "qwen3:1.7b",
+      "model_digest": "8f68893c685c3ddff2aa3fffce2aa60a30bb2da65ca488b61fff134a4d1730e7",
+      "state": "SUCCEEDED",
+      "metrics": {
+        "eval_count": 360,
+        "done_reason": "stop",
+        "wall_seconds": 25.4478,
+        "eval_duration": 18632574000,
+        "load_duration": 1724604,
+        "total_duration": 25434334600,
+        "prompt_eval_count": 1230
+      }
+    },
+    {
+      "id": 11,
+      "stage": "TOOL_FEEDBACK_SELECTION",
+      "model": "qwen3:1.7b",
+      "model_digest": "8f68893c685c3ddff2aa3fffce2aa60a30bb2da65ca488b61fff134a4d1730e7",
+      "state": "SUCCEEDED",
+      "metrics": {
+        "eval_count": 280,
+        "done_reason": "stop",
+        "wall_seconds": 53.8597,
+        "eval_duration": 21788272000,
+        "load_duration": 1510494,
+        "total_duration": 53846435055,
+        "prompt_eval_count": 2299
+      }
+    }
+  ],
+  "policy_versions": [
+    {
+      "example_count": 3,
+      "artifact": {
+        "path": "research/policies/4275908797f94cf1df0340d5629b00f938902696356c31fa43ed1d6c1bf66e78",
+        "bytes": 3997,
+        "sha256": "4275908797f94cf1df0340d5629b00f938902696356c31fa43ed1d6c1bf66e78"
+      },
+      "metrics": {
+        "seed": 1729,
+        "steps": 128,
+        "evidence": "DEVELOPMENT_FEEDBACK_ONLY",
+        "examples": 3,
+        "parent_policy": {
+          "path": "research/policies/e1afbe5b4cb33f5efba0dd28c34a6dafc2ab66ffc5b6fd515f7eace08db53610",
+          "bytes": 3741,
+          "sha256": "e1afbe5b4cb33f5efba0dd28c34a6dafc2ab66ffc5b6fd515f7eace08db53610"
+        },
+        "weight_digest": "42466b40f3267b0c0d586fd174ba7671421c756b9cdb6ec8bd94680a62729664",
+        "example_digest": "98fdc3dc4482f3bf1764d3d64102c58be3c841cea0adac0e1ad09e3557152726",
+        "generalization": "NOT_ESTABLISHED",
+        "parameter_count": 225,
+        "replay_capacity": 128,
+        "parameters_updated": true,
+        "training_loss_after": 2.764807582877893e-08,
+        "training_loss_before": 0.06985302269458771,
+        "initial_weight_digest": "02f28cee9dcdb27fb5d60313479c38c3396bc2b4912181d8464d451933975dee"
+      }
+    },
+    {
+      "example_count": 4,
+      "artifact": {
+        "path": "research/policies/0a0614660dac96450895add2023bb847080d34af2328d28c97ae75714fb1e4cd",
+        "bytes": 3997,
+        "sha256": "0a0614660dac96450895add2023bb847080d34af2328d28c97ae75714fb1e4cd"
+      },
+      "metrics": {
+        "seed": 1729,
+        "steps": 128,
+        "evidence": "DEVELOPMENT_FEEDBACK_ONLY",
+        "examples": 4,
+        "parent_policy": {
+          "path": "research/policies/4275908797f94cf1df0340d5629b00f938902696356c31fa43ed1d6c1bf66e78",
+          "bytes": 3997,
+          "sha256": "4275908797f94cf1df0340d5629b00f938902696356c31fa43ed1d6c1bf66e78"
+        },
+        "weight_digest": "80b44ec5dd4a78412b8a75f1a8e5f4c57c7dbbd8c233109579cfab2838401b55",
+        "example_digest": "82630787e660cf922fabef5d552cac1e50cf6f7d15e41ab408e7790275e192fc",
+        "generalization": "NOT_ESTABLISHED",
+        "parameter_count": 225,
+        "replay_capacity": 128,
+        "parameters_updated": true,
+        "training_loss_after": 7.42796473218732e-08,
+        "training_loss_before": 3.5443122214928735e-08,
+        "initial_weight_digest": "42466b40f3267b0c0d586fd174ba7671421c756b9cdb6ec8bd94680a62729664"
+      }
+    },
+    {
+      "example_count": 5,
+      "artifact": {
+        "path": "research/policies/656343fd7df38562ef29fa1fff64f088060bf4677c6ccf6623bc564062684da0",
+        "bytes": 3997,
+        "sha256": "656343fd7df38562ef29fa1fff64f088060bf4677c6ccf6623bc564062684da0"
+      },
+      "metrics": {
+        "seed": 1729,
+        "steps": 128,
+        "evidence": "DEVELOPMENT_FEEDBACK_ONLY",
+        "examples": 5,
+        "parent_policy": {
+          "path": "research/policies/0a0614660dac96450895add2023bb847080d34af2328d28c97ae75714fb1e4cd",
+          "bytes": 3997,
+          "sha256": "0a0614660dac96450895add2023bb847080d34af2328d28c97ae75714fb1e4cd"
+        },
+        "weight_digest": "0398752689f2aa7482d5fec98887193214942be1283f938dc3750efa4333fb0d",
+        "example_digest": "62c5b0c0d9b95bc777bed81f0cd60b71b7122f260c9e053f45407817b546a190",
+        "generalization": "NOT_ESTABLISHED",
+        "parameter_count": 225,
+        "replay_capacity": 128,
+        "parameters_updated": true,
+        "training_loss_after": 1.1740208805122165e-07,
+        "training_loss_before": 0.015321138314902782,
+        "initial_weight_digest": "80b44ec5dd4a78412b8a75f1a8e5f4c57c7dbbd8c233109579cfab2838401b55"
+      }
+    }
+  ],
+  "attempts": [
+    {
+      "path": "1",
+      "kind": "RESEARCH_EVALUATE",
+      "state": "SUCCEEDED",
+      "error_code": null,
+      "started_at": "2026-10-29 03:42:09.515016+00:00",
+      "ended_at": "2026-10-29 03:42:16.588717+00:00"
+    },
+    {
+      "path": "1",
+      "kind": "RESEARCH_PLAN",
+      "state": "SUCCEEDED",
+      "error_code": null,
+      "started_at": "2026-10-29 03:42:17.387314+00:00",
+      "ended_at": "2026-10-29 03:43:12.595536+00:00"
+    },
+    {
+      "path": "1-1",
+      "kind": "RESEARCH_EVALUATE",
+      "state": "SUCCEEDED",
+      "error_code": null,
+      "started_at": "2026-10-29 03:43:13.060504+00:00",
+      "ended_at": "2026-10-29 03:43:21.619713+00:00"
+    },
+    {
+      "path": "1-1",
+      "kind": "RESEARCH_PLAN",
+      "state": "SUCCEEDED",
+      "error_code": null,
+      "started_at": "2026-10-29 03:43:22.668929+00:00",
+      "ended_at": "2026-10-29 03:44:12.681225+00:00"
+    },
+    {
+      "path": "1-2",
+      "kind": "RESEARCH_EVALUATE",
+      "state": "SUCCEEDED",
+      "error_code": null,
+      "started_at": "2026-10-29 03:44:14.058984+00:00",
+      "ended_at": "2026-10-29 03:44:24.963156+00:00"
+    },
+    {
+      "path": "1-2",
+      "kind": "RESEARCH_PLAN",
+      "state": "SUCCEEDED",
+      "error_code": null,
+      "started_at": "2026-10-29 03:44:26.792747+00:00",
+      "ended_at": "2026-10-29 03:45:46.294362+00:00"
+    },
+    {
+      "path": "1-3",
+      "kind": "RESEARCH_EVALUATE",
+      "state": "FAILED",
+      "error_code": "INTERRUPTED",
+      "started_at": "2026-10-29 03:45:47.638108+00:00",
+      "ended_at": "2026-10-29 03:45:47.977168+00:00"
+    },
+    {
+      "path": "1-3",
+      "kind": "RESEARCH_EVALUATE",
+      "state": "SUCCEEDED",
+      "error_code": null,
+      "started_at": "2026-10-29 03:45:59.897170+00:00",
+      "ended_at": "2026-10-29 03:46:07.517805+00:00"
+    },
+    {
+      "path": "1-3",
+      "kind": "RESEARCH_PLAN",
+      "state": "SUCCEEDED",
+      "error_code": null,
+      "started_at": "2026-10-29 03:46:08.463911+00:00",
+      "ended_at": "2026-10-29 03:46:08.468088+00:00"
+    }
+  ],
+  "decisions": [
+    {
+      "action": "CAMPAIGN_FROZEN",
+      "evidence": {
+        "config": {
+          "recent": 60,
+          "planner": "local",
+          "purpose": "DEVELOPMENT_RESEARCH_NOT_FORMAL_PREDICTION",
+          "max_nodes": 4,
+          "root_spec": {
+            "epochs": 12,
+            "hidden": 128,
+            "method": "raw",
+            "window": 16,
+            "weight_decay": 0.0,
+            "learning_rate": 0.002,
+            "train_history": 256
+          },
+          "historical": 200,
+          "code_digest": "a3ea42709b20b48b0bb2591e12c17d93bd98744ea08d9fabf210510a15cbe9cb",
+          "node_seconds": 600,
+          "max_model_calls": 8
+        },
+        "protocol": {
+          "seed": 1729,
+          "digest": "ad8b2ec1c933317b43e476d3f8dc9474d742303e8481e9c2383ceabe7cc18bf6",
+          "recent": [
+            3460,
+            3461,
+            3462,
+            3463,
+            3464,
+            3465,
+            3466,
+            3467,
+            3468,
+            3469,
+            3470,
+            3471,
+            3472,
+            3473,
+            3474,
+            3475,
+            3476,
+            3477,
+            3478,
+            3479,
+            3480,
+            3481,
+            3482,
+            3483,
+            3484,
+            3485,
+            3486,
+            3487,
+            3488,
+            3489,
+            3490,
+            3491,
+            3492,
+            3493,
+            3494,
+            3495,
+            3496,
+            3497,
+            3498,
+            3499,
+            3500,
+            3501,
+            3502,
+            3503,
+            3504,
+            3505,
+            3506,
+            3507,
+            3508,
+            3509,
+            3510,
+            3511,
+            3512,
+            3513,
+            3514,
+            3515,
+            3516,
+            3517,
+            3518,
+            3519
+          ],
+          "origins": [
+            130,
+            151,
+            157,
+            207,
+            214,
+            221,
+            234,
+            274,
+            277,
+            313,
+            317,
+            338,
+            361,
+            362,
+            383,
+            384,
+            394,
+            408,
+            442,
+            462,
+            470,
+            494,
+            496,
+            517,
+            582,
+            620,
+            647,
+            648,
+            649,
+            661,
+            670,
+            673,
+            678,
+            745,
+            748,
+            759,
+            762,
+            778,
+            779,
+            786,
+            811,
+            862,
+            865,
+            896,
+            916,
+            926,
+            949,
+            956,
+            1009,
+            1019,
+            1030,
+            1032,
+            1038,
+            1042,
+            1046,
+            1053,
+            1094,
+            1098,
+            1101,
+            1108,
+            1171,
+            1176,
+            1209,
+            1220,
+            1228,
+            1236,
+            1258,
+            1287,
+            1292,
+            1314,
+            1335,
+            1336,
+            1362,
+            1372,
+            1376,
+            1398,
+            1411,
+            1444,
+            1470,
+            1478,
+            1520,
+            1536,
+            1546,
+            1575,
+            1618,
+            1620,
+            1629,
+            1704,
+            1713,
+            1717,
+            1724,
+            1725,
+            1729,
+            1746,
+            1747,
+            1765,
+            1769,
+            1772,
+            1777,
+            1794,
+            1834,
+            1841,
+            1870,
+            1918,
+            1922,
+            1941,
+            1954,
+            1962,
+            1965,
+            1971,
+            1973,
+            1976,
+            1982,
+            2046,
+            2065,
+            2066,
+            2084,
+            2137,
+            2148,
+            2149,
+            2164,
+            2207,
+            2209,
+            2224,
+            2255,
+            2257,
+            2259,
+            2280,
+            2286,
+            2295,
+            2309,
+            2323,
+            2341,
+            2362,
+            2395,
+            2418,
+            2420,
+            2459,
+            2465,
+            2485,
+            2519,
+            2523,
+            2531,
+            2541,
+            2551,
+            2557,
+            2575,
+            2583,
+            2594,
+            2623,
+            2656,
+            2676,
+            2691,
+            2702,
+            2712,
+            2749,
+            2758,
+            2778,
+            2781,
+            2832,
+            2864,
+            2880,
+            2887,
+            2894,
+            2899,
+            2914,
+            2917,
+            2930,
+            2976,
+            2996,
+            3036,
+            3044,
+            3082,
+            3103,
+            3124,
+            3127,
+            3135,
+            3141,
+            3172,
+            3180,
+            3305,
+            3312,
+            3350,
+            3359,
+            3366,
+            3386,
+            3394,
+            3395,
+            3415,
+            3416,
+            3437,
+            3440,
+            3445,
+            3452,
+            3460,
+            3461,
+            3462,
+            3463,
+            3464,
+            3465,
+            3466,
+            3467,
+            3468,
+            3469,
+            3470,
+            3471,
+            3472,
+            3473,
+            3474,
+            3475,
+            3476,
+            3477,
+            3478,
+            3479,
+            3480,
+            3481,
+            3482,
+            3483,
+            3484,
+            3485,
+            3486,
+            3487,
+            3488,
+            3489,
+            3490,
+            3491,
+            3492,
+            3493,
+            3494,
+            3495,
+            3496,
+            3497,
+            3498,
+            3499,
+            3500,
+            3501,
+            3502,
+            3503,
+            3504,
+            3505,
+            3506,
+            3507,
+            3508,
+            3509,
+            3510,
+            3511,
+            3512,
+            3513,
+            3514,
+            3515,
+            3516,
+            3517,
+            3518,
+            3519
+          ],
+          "primary": "blue_log_loss",
+          "reserve": [
+            147,
+            155,
+            203,
+            263,
+            295,
+            354,
+            416,
+            421,
+            662,
+            948,
+            1086,
+            1155,
+            1278,
+            1285,
+            1493,
+            1619,
+            1779,
+            1790,
+            1804,
+            1823,
+            1825,
+            1839,
+            1886,
+            1895,
+            1907,
+            1977,
+            2102,
+            2303,
+            2447,
+            2502,
+            2571,
+            2611,
+            2799,
+            2975,
+            3000,
+            3087,
+            3181,
+            3262,
+            3349,
+            3380
+          ],
+          "evidence": "DEVELOPMENT_REPLAY_NOT_FORWARD_OR_PROTECTED_HOLDOUT",
+          "sampling": "ten_time_strata_without_replacement;never_condition_on_outcomes",
+          "block_length": 5,
+          "reserve_policy": "precomputed_bounded_development_recheck;not_independent_final_evidence",
+          "training_start": "fresh_common_seed_for_each_origin_and_candidate",
+          "minimum_history": 128,
+          "random_historical": [
+            130,
+            151,
+            157,
+            207,
+            214,
+            221,
+            234,
+            274,
+            277,
+            313,
+            317,
+            338,
+            361,
+            362,
+            383,
+            384,
+            394,
+            408,
+            442,
+            462,
+            470,
+            494,
+            496,
+            517,
+            582,
+            620,
+            647,
+            648,
+            649,
+            661,
+            670,
+            673,
+            678,
+            745,
+            748,
+            759,
+            762,
+            778,
+            779,
+            786,
+            811,
+            862,
+            865,
+            896,
+            916,
+            926,
+            949,
+            956,
+            1009,
+            1019,
+            1030,
+            1032,
+            1038,
+            1042,
+            1046,
+            1053,
+            1094,
+            1098,
+            1101,
+            1108,
+            1171,
+            1176,
+            1209,
+            1220,
+            1228,
+            1236,
+            1258,
+            1287,
+            1292,
+            1314,
+            1335,
+            1336,
+            1362,
+            1372,
+            1376,
+            1398,
+            1411,
+            1444,
+            1470,
+            1478,
+            1520,
+            1536,
+            1546,
+            1575,
+            1618,
+            1620,
+            1629,
+            1704,
+            1713,
+            1717,
+            1724,
+            1725,
+            1729,
+            1746,
+            1747,
+            1765,
+            1769,
+            1772,
+            1777,
+            1794,
+            1834,
+            1841,
+            1870,
+            1918,
+            1922,
+            1941,
+            1954,
+            1962,
+            1965,
+            1971,
+            1973,
+            1976,
+            1982,
+            2046,
+            2065,
+            2066,
+            2084,
+            2137,
+            2148,
+            2149,
+            2164,
+            2207,
+            2209,
+            2224,
+            2255,
+            2257,
+            2259,
+            2280,
+            2286,
+            2295,
+            2309,
+            2323,
+            2341,
+            2362,
+            2395,
+            2418,
+            2420,
+            2459,
+            2465,
+            2485,
+            2519,
+            2523,
+            2531,
+            2541,
+            2551,
+            2557,
+            2575,
+            2583,
+            2594,
+            2623,
+            2656,
+            2676,
+            2691,
+            2702,
+            2712,
+            2749,
+            2758,
+            2778,
+            2781,
+            2832,
+            2864,
+            2880,
+            2887,
+            2894,
+            2899,
+            2914,
+            2917,
+            2930,
+            2976,
+            2996,
+            3036,
+            3044,
+            3082,
+            3103,
+            3124,
+            3127,
+            3135,
+            3141,
+            3172,
+            3180,
+            3305,
+            3312,
+            3350,
+            3359,
+            3366,
+            3386,
+            3394,
+            3395,
+            3415,
+            3416,
+            3437,
+            3440,
+            3445,
+            3452,
+            3460,
+            3468,
+            3485,
+            3488,
+            3501,
+            3504
+          ],
+          "regression_margin": 0.02,
+          "red_brier_tolerance": 0.01,
+          "bootstrap_replicates": 1000
+        },
+        "dataset_id": "d16f26fb4df00ec6c8b12b3e870a3e06b42c3bff66518cdc7c59956e91446090"
+      },
+      "created_at": "2026-10-29 03:42:06.021130+00:00"
+    },
+    {
+      "action": "ACCEPT_BASELINE",
+      "evidence": {
+        "verdict": "ACCEPT_BASELINE",
+        "protocol_digest": "ad8b2ec1c933317b43e476d3f8dc9474d742303e8481e9c2383ceabe7cc18bf6"
+      },
+      "created_at": "2026-10-29 03:42:16.588717+00:00"
+    },
+    {
+      "action": "EXPLORE_NEW_DIRECTION",
+      "evidence": {
+        "after": "1",
+        "to_path": "1-1",
+        "from_path": "1",
+        "parent_anchor": {
+          "path": "research/anchors/d2d5f30827ef237f8d9b826e88fbe82a0d5562732b22f9a4df279cb0db0d5940",
+          "bytes": 1294936,
+          "sha256": "d2d5f30827ef237f8d9b826e88fbe82a0d5562732b22f9a4df279cb0db0d5940"
+        },
+        "hypothesis_summary": {
+          "source": "LOCAL_MODEL_WITH_MATH_TOOLS",
+          "hypothesis": "The FFT method does not capture stable periodicity in lottery labels.",
+          "selection": {
+            "reason": "The feedback indicates that the model's performance is constrained by the blue log loss and red Brier, with a top1 rate of 7.09%. The protocol_digest suggests a causal-window approach with rFFT, which may not capture stable periodicity in lottery labels. The method_cards include FFT, Newton, and Ridge, each with specific properties that could be falsified by examining their impact on performance.",
+            "selected": 0,
+            "next_if_failed": "The model's performance is constrained by the blue log loss and red Brier, with a top1 rate of 7.09%. The protocol_digest suggests a causal-window approach with rFFT, which may not capture stable periodicity in lottery labels. The method_cards include FFT, Newton, and Ridge, each with specific properties that could be falsified by examining their impact on performance."
+          }
+        }
+      },
+      "created_at": "2026-10-29 03:43:12.595536+00:00"
+    },
+    {
+      "action": "INCONCLUSIVE",
+      "evidence": {
+        "verdict": "INCONCLUSIVE",
+        "evidence": "DEVELOPMENT_REPLAY_NOT_FORWARD_OR_PROTECTED_HOLDOUT",
+        "n_unique": 294,
+        "recent_delta": 0.019298687086940262,
+        "reserve_used": true,
+        "protocol_digest": "ad8b2ec1c933317b43e476d3f8dc9474d742303e8481e9c2383ceabe7cc18bf6",
+        "red_brier_delta": -0.011295075557957241,
+        "random_historical_delta": -0.00582161543381033,
+        "paired_mean_blue_loss_delta": 0.0015404587334964242,
+        "paired_development_interval95": [
+          -0.038864965676960836,
+          0.04400052918889953
+        ]
+      },
+      "created_at": "2026-10-29 03:43:21.619713+00:00"
+    },
+    {
+      "action": "RESTORE_PARENT",
+      "evidence": {
+        "restored": {
+          "rng_digest": "c98fb412e49439d93f9ba5fbd8210d356fd2b6add20d13499ea93044047bdbae",
+          "rng_restored": true,
+          "through_issue": "2026123",
+          "weight_digest": "a5a8b2fa182465fa2f42e347bfdac06524bee1b089ed36564e0165541b4e50db",
+          "optimizer_digest": "69fa1d3e4e79e8b5ffdbca0e7a36c222eb2cf14ceec4bd363250f03ffe7c8426",
+          "mathematical_digest": "2e7a1aa100a1266af873c39d2f4f8cb78a61a87e1c162674bea5e1790c01a07a"
+        },
+        "parent_path": "1",
+        "parent_anchor": {
+          "path": "research/anchors/d2d5f30827ef237f8d9b826e88fbe82a0d5562732b22f9a4df279cb0db0d5940",
+          "bytes": 1294936,
+          "sha256": "d2d5f30827ef237f8d9b826e88fbe82a0d5562732b22f9a4df279cb0db0d5940"
+        },
+        "failed_or_uncertain_child": "1-1"
+      },
+      "created_at": "2026-10-29 03:43:21.619713+00:00"
+    },
+    {
+      "action": "EXPLORE_NEW_DIRECTION",
+      "evidence": {
+        "after": "1-1",
+        "to_path": "1-2",
+        "from_path": "1",
+        "parent_anchor": {
+          "path": "research/anchors/d2d5f30827ef237f8d9b826e88fbe82a0d5562732b22f9a4df279cb0db0d5940",
+          "bytes": 1294936,
+          "sha256": "d2d5f30827ef237f8d9b826e88fbe82a0d5562732b22f9a4df279cb0db0d5940"
+        },
+        "hypothesis_summary": {
+          "source": "LOCAL_MODEL_WITH_MATH_TOOLS",
+          "hypothesis": "The ridge method may stabilize the model's predictions but could lead to suboptimal top1 performance due to potential bias from shrinkage.",
+          "selection": {
+            "reason": "The feedback indicates that the model's performance is constrained by the development replay, with some evidence of improvement in blue log loss and red Brier, but the top1 rate remains low. The protocol digest is consistent across different runs, suggesting a stable baseline.",
+            "selected": 0,
+            "next_if_failed": "The model's performance is constrained by the development replay, and the top1 rate remains low. The protocol digest is consistent across different runs, suggesting a stable baseline."
+          }
+        }
+      },
+      "created_at": "2026-10-29 03:44:12.681225+00:00"
+    },
+    {
+      "action": "INCONCLUSIVE",
+      "evidence": {
+        "verdict": "INCONCLUSIVE",
+        "evidence": "DEVELOPMENT_REPLAY_NOT_FORWARD_OR_PROTECTED_HOLDOUT",
+        "n_unique": 294,
+        "recent_delta": 0.007046889545374284,
+        "reserve_used": true,
+        "protocol_digest": "ad8b2ec1c933317b43e476d3f8dc9474d742303e8481e9c2383ceabe7cc18bf6",
+        "red_brier_delta": -0.00384569170506797,
+        "random_historical_delta": 0.00024320649585516386,
+        "paired_mean_blue_loss_delta": -0.00019008930766009342,
+        "paired_development_interval95": [
+          -0.008485418681210527,
+          0.007575408149930766
+        ]
+      },
+      "created_at": "2026-10-29 03:44:24.963156+00:00"
+    },
+    {
+      "action": "RESTORE_PARENT",
+      "evidence": {
+        "restored": {
+          "rng_digest": "c98fb412e49439d93f9ba5fbd8210d356fd2b6add20d13499ea93044047bdbae",
+          "rng_restored": true,
+          "through_issue": "2026123",
+          "weight_digest": "a5a8b2fa182465fa2f42e347bfdac06524bee1b089ed36564e0165541b4e50db",
+          "optimizer_digest": "69fa1d3e4e79e8b5ffdbca0e7a36c222eb2cf14ceec4bd363250f03ffe7c8426",
+          "mathematical_digest": "2e7a1aa100a1266af873c39d2f4f8cb78a61a87e1c162674bea5e1790c01a07a"
+        },
+        "parent_path": "1",
+        "parent_anchor": {
+          "path": "research/anchors/d2d5f30827ef237f8d9b826e88fbe82a0d5562732b22f9a4df279cb0db0d5940",
+          "bytes": 1294936,
+          "sha256": "d2d5f30827ef237f8d9b826e88fbe82a0d5562732b22f9a4df279cb0db0d5940"
+        },
+        "failed_or_uncertain_child": "1-2"
+      },
+      "created_at": "2026-10-29 03:44:24.963156+00:00"
+    },
+    {
+      "action": "EXPLORE_NEW_DIRECTION",
+      "evidence": {
+        "after": "1-2",
+        "to_path": "1-3",
+        "from_path": "1",
+        "parent_anchor": {
+          "path": "research/anchors/d2d5f30827ef237f8d9b826e88fbe82a0d5562732b22f9a4df279cb0db0d5940",
+          "bytes": 1294936,
+          "sha256": "d2d5f30827ef237f8d9b826e88fbe82a0d5562732b22f9a4df279cb0db0d5940"
+        },
+        "hypothesis_summary": {
+          "source": "LOCAL_MODEL_WITH_MATH_TOOLS",
+          "hypothesis": "The short window method does not retain the same periodicity in the labels, leading to unstable performance.",
+          "selection": {
+            "reason": "The feedback indicates that the model's performance is mixed. The baseline model has a blue log loss of 2.90378 and a red brier of 0.1682, while the development replay models show varying performance with blue log loss ranging from 2.90378 to 2.90584 and red brier ranging from 0.1682 to 0.1644. The top1 rate varies between 0.0709 and 0.0787, and the number of unique samples is consistent across models.",
+            "selected": 0,
+            "next_if_failed": "The feedback indicates that the model's performance is mixed, and the development replay models show varying performance. The baseline model has a blue log loss of 2.90378 and a red brier of 0.1682, while the development replay models show varying performance with blue log loss ranging from 2.90378 to 2.90584 and red brier ranging from 0.1682 to 0.1644. The top1 rate varies between 0.0709 and 0.07"
+          }
+        }
+      },
+      "created_at": "2026-10-29 03:45:46.294362+00:00"
+    },
+    {
+      "action": "ACCEPT_IMPROVEMENT",
+      "evidence": {
+        "verdict": "ACCEPT_IMPROVEMENT",
+        "evidence": "DEVELOPMENT_REPLAY_NOT_FORWARD_OR_PROTECTED_HOLDOUT",
+        "n_unique": 254,
+        "recent_delta": -0.15735294478082024,
+        "reserve_used": false,
+        "protocol_digest": "ad8b2ec1c933317b43e476d3f8dc9474d742303e8481e9c2383ceabe7cc18bf6",
+        "red_brier_delta": 0.0019357665030642044,
+        "random_historical_delta": -0.1113133316494536,
+        "paired_mean_blue_loss_delta": -0.12022102846515229,
+        "paired_development_interval95": [
+          -0.16362470609308052,
+          -0.071093773900768
+        ]
+      },
+      "created_at": "2026-10-29 03:46:07.517805+00:00"
+    },
+    {
+      "action": "NODE_BUDGET_EXHAUSTED",
+      "evidence": {
+        "nodes": 4
+      },
+      "created_at": "2026-10-29 03:46:08.468088+00:00"
+    }
+  ],
+  "superseded_campaign": {
+    "id": "p2b-local-math-20261029",
+    "status": "SUPERSEDED"
+  },
+  "superseded_failed_attempts": [
+    {
+      "state": "FAILED",
+      "error_code": "DUPLICATE_RESEARCH_DIRECTION",
+      "n": 3
+    },
+    {
+      "state": "SUCCEEDED",
+      "error_code": null,
+      "n": 3
+    }
+  ],
+  "runtime": {
+    "code_digest": "216d783287bbc6c68d6e5b9d5d22100611e674f662d73763a0f8522d6c7923f8",
+    "draws": {
+      "count": 3520,
+      "latest_issue": "2026123"
+    },
+    "models": 13,
+    "database_bytes": 23099059,
+    "owned_artifact_bytes": 43968450,
+    "artifact_quota_bytes": 268435456,
+    "full_autonomous_research": {
+      "backend": "LOCAL",
+      "model": "qwen3:1.7b",
+      "inference_calls": [
+        {
+          "state": "SUCCEEDED",
+          "count": 11
+        }
+      ],
+      "value_model_versions": 4,
+      "scope": "BOUNDED_DEVELOPMENT_CAMPAIGNS;NO_LLM_WEIGHT_FINETUNING;NO_FORWARD_PROOF"
+    }
+  },
+  "p1_loops": [
+    {
+      "id": "history-p1",
+      "mode": "REPLAY",
+      "state": "WAITING_FOR_DATA",
+      "evaluated_issues": 12,
+      "blue_top1_hits": 0,
+      "blue_50_percent_evidence": "NOT_ESTABLISHED"
+    }
+  ],
+  "authenticated_api": "PASS",
+  "claim_scope": "DEVELOPMENT_REPLAY_ONLY;BLUE50_NOT_ESTABLISHED;LLM_WEIGHTS_FROZEN;LEGACY_UNTOUCHED",
+  "report_scope": "Compact extraction of the live runtime audit; full prompts and decision payloads remain in Next runtime, no raw draw labels committed"
+}

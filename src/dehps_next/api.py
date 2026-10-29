@@ -31,7 +31,7 @@ def create_app(settings=None):
         app.state.db.close()
 
     app = FastAPI(
-        title="DEHPS Next P1 read-only evidence API",
+        title="DEHPS Next read-only learning and research evidence API",
         lifespan=lifespan,
         docs_url=None,
         redoc_url=None,
@@ -85,7 +85,7 @@ def create_app(settings=None):
     @app.get("/ready")
     def ready(request: Request):
         try:
-            if not request.app.state.db.rows("SELECT 1 FROM schema_migrations WHERE version=1"):
+            if not request.app.state.db.rows("SELECT 1 FROM schema_migrations WHERE version=3"):
                 return JSONResponse(status_code=503, content={"status": "not_ready"})
             return {"status": "ready"}
         except (DatabaseError, PoolTimeout):

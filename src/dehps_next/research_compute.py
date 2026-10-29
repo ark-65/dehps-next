@@ -15,7 +15,7 @@ from .model import Recipe, RedBlueNet, encode_torch, load_torch, vectors, weight
 
 def validate_spec(spec):
     allowed = {"method", "window", "hidden", "epochs", "learning_rate", "weight_decay", "train_history"}
-    if set(spec) != allowed or spec["method"] not in ("raw", "fft"):
+    if set(spec) != allowed or spec["method"] not in ("raw", "fft", "ridge", "newton"):
         raise DomainError("INVALID_RESEARCH_SPEC", "Unknown feature, method or parameter")
     if any(type(spec[k]) is not int for k in ("window", "hidden", "epochs", "train_history")):
         raise DomainError("INVALID_RESEARCH_SPEC", "Integer model parameters required")
@@ -82,7 +82,11 @@ def fit_prior(prior, spec, seed, pulse, initial=None):
     inherited = False
     if initial:
         parent = load_torch(initial)
-        if parent["spec"]["window"] == window and parent["spec"]["hidden"] == spec["hidden"]:
+        if (
+            parent["spec"]["window"] == window
+            and parent["spec"]["hidden"] == spec["hidden"]
+            and parent["spec"]["method"] == spec["method"]
+        ):
             model.load_state_dict(parent["model"])
             optimizer.load_state_dict(parent["optimizer"])
             for group in optimizer.param_groups:
@@ -90,13 +94,18 @@ def fit_prior(prior, spec, seed, pulse, initial=None):
             torch.set_rng_state(parent["rng"])
             inherited = True
     before = weight_digest(model)
+    # Calibration uses a prior-only tail that is excluded from neural fitting.
+    calibration = min(32, len(x) // 4) if spec["method"] == "newton" else 0
+    fit_x = x[:-calibration] if calibration else x
+    fit_target = target[:-calibration] if calibration else target
+    fit_blue = blue_target[:-calibration] if calibration else blue_target
     losses = []
     for _ in range(spec["epochs"]):
         pulse()
         optimizer.zero_grad()
-        red_logits, blue_logits = model(x)
-        loss = nn.functional.binary_cross_entropy_with_logits(red_logits, target[:, :33])
-        loss = loss + nn.functional.cross_entropy(blue_logits, blue_target)
+        red_logits, blue_logits = model(fit_x)
+        loss = nn.functional.binary_cross_entropy_with_logits(red_logits, fit_target[:, :33])
+        loss = loss + nn.functional.cross_entropy(blue_logits, fit_blue)
         if not torch.isfinite(loss):
             raise DomainError("RESEARCH_NONFINITE", "Non-finite candidate loss")
         loss.backward()
@@ -107,6 +116,33 @@ def fit_prior(prior, spec, seed, pulse, initial=None):
         red_logits, blue_logits = model(prediction_input)
         red = torch.sigmoid(red_logits)[0].clamp(1e-7, 1 - 1e-7).numpy()
         blue = torch.softmax(blue_logits, dim=1)[0].numpy()
+        mathematical = {"method": spec["method"]}
+        if spec["method"] == "ridge":
+            # A small residual head on causal window means, solved in primal form.
+            z = np.column_stack([windows.mean(axis=1), np.ones(len(windows))]).astype(np.float64)
+            red_fit, blue_fit = model(x)
+            fitted = np.column_stack([torch.sigmoid(red_fit).numpy(), torch.softmax(blue_fit, 1).numpy()])
+            residual = target.numpy() - fitted
+            penalty = np.eye(z.shape[1]) * 10.0
+            penalty[-1, -1] = 0.01
+            coefficients = np.linalg.solve(z.T @ z + penalty, z.T @ residual)
+            query = np.append(prior[-window:].mean(axis=0), 1)
+            adjustment = query @ coefficients
+            red = np.clip(red + 0.25 * adjustment[:33], 1e-7, 1 - 1e-7)
+            blue = np.clip(blue + 0.25 * adjustment[33:], 1e-7, None)
+            blue /= blue.sum()
+            mathematical.update(
+                coefficients=torch.from_numpy(coefficients), ridge_penalty=10.0, blend=0.25, fit_rows=len(z)
+            )
+        elif spec["method"] == "newton":
+            from .research_math import temperature_newton
+
+            _, calibration_logits = model(x[-calibration:])
+            result = temperature_newton(calibration_logits.numpy(), blue_target[-calibration:].numpy())
+            blue = torch.softmax(blue_logits / result["temperature"], dim=1)[0].numpy()
+            mathematical.update(result, calibration_rows=calibration)
+        elif spec["method"] == "fft":
+            mathematical.update(retained_frequency_bins=4, axis="prior_window_only")
     if not np.isfinite(red).all() or not np.isfinite(blue).all():
         raise DomainError("RESEARCH_NONFINITE", "Invalid candidate probabilities")
     payload = {
@@ -121,6 +157,8 @@ def fit_prior(prior, spec, seed, pulse, initial=None):
         "seed": seed,
         "gradient_steps": spec["epochs"],
         "loss": losses[-1],
+        "mathematical": mathematical,
+        "mathematical_digest": state_hash(mathematical),
     }
     return red, blue, payload
 
@@ -163,6 +201,7 @@ def compute_node(snapshot, spec, protocol, pulse, checkpoint, saved=None, initia
                 "red_probabilities": red.tolist(),
                 "weight_digest": trained["weight_digest"],
                 "parameter_updated": trained["weight_digest"] != trained["initial_weight_digest"],
+                "mathematical_digest": trained["mathematical_digest"],
             }
         )
         if len(rows) % 8 == 0 or len(rows) == len(all_origins):
@@ -176,9 +215,12 @@ def compute_node(snapshot, spec, protocol, pulse, checkpoint, saved=None, initia
         {
             "seconds_this_attempt": round(time.monotonic() - start, 4),
             "resumed_origins": len(saved["rows"]) if saved else 0,
-            "actual_gradient_steps": len(all_origins) * spec["epochs"] + spec["epochs"],
+            "committed_origin_and_anchor_steps": len(all_origins) * spec["epochs"] + spec["epochs"],
+            "step_count_scope": "unique_completed_fits;excludes_interrupted_or_recomputed_work",
             "anchor_weight_digest": anchor["weight_digest"],
             "anchor_optimizer_digest": anchor["optimizer_digest"],
+            "anchor_mathematical_digest": anchor["mathematical_digest"],
+            "anchor_inherited_compatible_parent": anchor["inherited"],
             "all_origin_parameters_updated": all(r["parameter_updated"] for r in rows),
         },
     )
@@ -197,9 +239,13 @@ def restore_anchor(data):
         or state_hash(optimizer.state_dict()) != anchor["optimizer_digest"]
     ):
         raise DomainError("ROLLBACK_ANCHOR_CORRUPT", "Parent model or optimizer digest differs")
+    if "mathematical" in anchor and state_hash(anchor["mathematical"]) != anchor["mathematical_digest"]:
+        raise DomainError("ROLLBACK_MATH_CORRUPT", "Parent mathematical state digest differs")
     return {
         "weight_digest": weight_digest(model),
         "optimizer_digest": state_hash(optimizer.state_dict()),
         "rng_restored": True,
+        "rng_digest": state_hash(torch.get_rng_state()),
+        "mathematical_digest": anchor.get("mathematical_digest"),
         "through_issue": anchor["through_issue"],
     }

@@ -45,6 +45,9 @@ def main():
     research.add_argument("--historical", type=int, default=200)
     research_status = commands.add_parser("research-status")
     research_status.add_argument("--name", required=True)
+    research_stop = commands.add_parser("research-stop")
+    research_stop.add_argument("--name", required=True)
+    research_stop.add_argument("--reason", required=True)
     adopt = commands.add_parser("adopt-release")
     adopt.add_argument("--loop", required=True)
     adopt.add_argument("--reason", required=True)
@@ -74,7 +77,7 @@ def main():
     try:
         if args.command == "init":
             db.migrate()
-            output({"schema": 2, "status": "initialized", "runtime": str(settings.runtime)})
+            output({"schema": 3, "status": "initialized", "runtime": str(settings.runtime)})
         elif args.command == "sync":
             output(DataService(db, artifacts).sync())
         elif args.command == "import-json":
@@ -124,6 +127,10 @@ def main():
                     ),
                 }
             )
+        elif args.command == "research-stop":
+            from .research import Research
+
+            output(Research(db, artifacts).stop_campaign(args.name, args.reason))
         elif args.command == "adopt-release":
             from .research import Research
 
