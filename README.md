@@ -153,3 +153,25 @@ docker compose -f compose.yaml -f compose.inference.yaml run --rm worker program
 `/status`显示程序、额度、预留、回收及宿主机上界。缺少新鲜遥测时明确等待，不能猜测资源足够。
 
 [P3运行政策](docs/architecture/p3-autonomous-lifecycle.md) · [P3实际验收](docs/acceptance/p3-20261029.md)
+
+## 邮件报告与数据更新
+
+按2026-10-29最新要求取消看板开发，邮件作为主要交付；保留只读API作运维核验。
+`source`每15分钟直接同步福彩官方结果到Next独立数据库，不依赖旧库继续更新，不调用旧更新脚本。
+历史已授权导入3520期，旧库来源标签保留；重复官方核对不会改写原始事实或重复存整份回执。
+
+`reporter`常驻服务每30秒检查上海时区日程：开奖日16:30准备、17:00发送红球Top100/唯一蓝球Top1，
+官方完整结果入库并结算后发送复盘。相同收件人/期号/报告类型有持久去重，重启不会重复发送。
+SMTP明确接收才记SENT；可能送达但回执丢失记UNKNOWN，不盲目重发。旧系统服务与定时任务保持不动。
+
+将Next专用SMTP配置放入0600的`.mail.env`：`DEHPS_NEXT_SMTP_HOST`、`DEHPS_NEXT_SMTP_PORT`、
+`DEHPS_NEXT_SMTP_USER`、`DEHPS_NEXT_SMTP_PASSWORD`、`DEHPS_NEXT_MAIL_TO`。仅reporter读取，禁止提交Git。
+Compose的可选邮件文件配置需要Compose 2.24或更新版；没有邮件配置时核心服务仍可启动，邮件发送会明确报配置问题。
+
+```bash
+docker compose -f compose.yaml -f compose.inference.yaml up -d source reporter worker
+```
+
+首次官方核实完整结果的时间另存为不可变记录，使开奖后复盘不用等到日末；不覆盖旧日期型可用时间。
+已核实日历覆盖2026-10-05至2026-12-31；跨年、过期日程或数据断档明确提醒，不猜期号、不补造历史预测。
+[邮件与迁移验收](docs/acceptance/mail-20261029.md)记录实际SMTP接收及首份真实开奖前封存。

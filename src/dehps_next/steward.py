@@ -63,6 +63,36 @@ class Steward:
             )
         return {"id": name, "config": config}
 
+    def adopt(self, name, reason):
+        if len(reason) < 12:
+            raise DomainError("PROGRAM_RELEASE_REASON", "Record the compatibility review")
+        with self.db.pool.connection() as c, c.transaction():
+            p = c.execute("SELECT * FROM research_programs WHERE id=%s FOR UPDATE", (name,)).fetchone()
+            if not p:
+                raise DomainError("UNKNOWN_PROGRAM", "Program not found")
+            if c.execute(
+                "SELECT 1 FROM jobs j JOIN research_nodes n ON n.id=j.research_node_id JOIN research_campaigns r ON r.id=n.campaign_id WHERE r.program_id=%s AND j.state IN ('READY','RUNNING')",
+                (name,),
+            ).fetchone():
+                raise DomainError(
+                    "ACTIVE_PROGRAM", "Finish or explicitly supersede its frozen activity first"
+                )
+            old = p["config"]["code_digest"]
+            completed = []
+            for topic in p["config"]["topics"]:
+                if digest([old, p["last_dataset"], topic["name"]]) in p["completed"]:
+                    completed.append(digest([code_identity(), p["last_dataset"], topic["name"]]))
+            config = {**p["config"], "code_digest": code_identity()}
+            c.execute(
+                "INSERT INTO program_release_adoptions(program_id,old_digest,new_digest,reason) VALUES(%s,%s,%s,%s)",
+                (name, old, code_identity(), reason),
+            )
+            c.execute(
+                "UPDATE research_programs SET config=%s,completed=%s WHERE id=%s",
+                (Jsonb(config), Jsonb(completed), name),
+            )
+        return {"program": name, "release": code_identity(), "completed_topics_preserved": len(completed)}
+
     def tick(self):
         output = []
         with self.db.pool.connection() as c, c.transaction():

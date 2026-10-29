@@ -89,7 +89,8 @@ class Scheduler:
             self.state(c, loop["id"], f"BLOCKED_{failed['error_code']}" if failed else active["state"])
             if active["state"] == "EVALUATE":
                 label = c.execute(
-                    "SELECT 1 FROM draws WHERE issue=%s AND available_at<=%s", (active["issue"], now())
+                    "SELECT 1 FROM effective_draws WHERE issue=%s AND available_at<=%s",
+                    (active["issue"], now()),
                 ).fetchone()
                 if loop["mode"] == "REPLAY" or label:
                     self.add_job(c, active["id"], "EVALUATE")
@@ -148,7 +149,7 @@ class Scheduler:
         self.state(c, loop["id"], "TRAIN")
 
     def _refit_or_wait(self, c, loop, parent, waiting_state):
-        latest = c.execute("""SELECT issue,draw_at FROM draws WHERE available_at<=now()
+        latest = c.execute("""SELECT issue,draw_at FROM effective_draws WHERE available_at<=now()
             AND observed_at<=now() ORDER BY draw_at DESC LIMIT 1""").fetchone()
         if latest is None:
             self.state(c, loop["id"], waiting_state)
