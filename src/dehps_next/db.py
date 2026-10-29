@@ -35,12 +35,15 @@ class Database:
             if not c.execute("SELECT 1 FROM schema_migrations WHERE version=1").fetchone():
                 c.execute(files("dehps_next").joinpath("migrations/001_up.sql").read_text())
                 c.execute("INSERT INTO schema_migrations VALUES(1)")
+            if not c.execute("SELECT 1 FROM schema_migrations WHERE version=2").fetchone():
+                c.execute(files("dehps_next").joinpath("migrations/002_up.sql").read_text())
+                c.execute("INSERT INTO schema_migrations VALUES(2)")
 
     def rows(self, sql, params=()):
         with self.pool.connection() as c:
             return c.execute(sql, params).fetchall()
 
-    def claim(self, worker):
+    def claim(self, worker, role="all"):
         token = str(uuid.uuid4())
         with self.pool.connection() as c, c.transaction():
             c.execute("""UPDATE attempts SET state='LOST', ended_at=now()
@@ -48,8 +51,15 @@ class Database:
                 (SELECT token FROM jobs WHERE state='RUNNING' AND lease_until<now())""")
             c.execute("""UPDATE jobs SET state=CASE WHEN attempts>=3 THEN 'FAILED' ELSE 'READY' END,
                 error_code='LEASE_EXPIRED', updated_at=now() WHERE state='RUNNING' AND lease_until<now()""")
-            row = c.execute("""SELECT * FROM jobs WHERE state='READY' AND not_before<=now()
-                ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1""").fetchone()
+            roles = {"all": "TRUE", "compute": "kind!='RESEARCH_PLAN'", "planning": "kind='RESEARCH_PLAN'"}
+            if role not in roles:
+                raise ValueError("Unknown worker role")
+            row = c.execute(
+                "SELECT * FROM jobs WHERE state='READY' AND not_before<=now() AND "
+                + roles[role]
+                + " ORDER BY CASE WHEN kind LIKE 'RESEARCH_%' THEN 1 ELSE 0 END,created_at,id "
+                "FOR UPDATE SKIP LOCKED LIMIT 1"
+            ).fetchone()
             if row is None:
                 return None
             row = c.execute(

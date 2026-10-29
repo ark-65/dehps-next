@@ -108,4 +108,20 @@ def create_app(settings=None):
             (loop_id,),
         )
 
+    @app.get("/research/{campaign_id}", dependencies=[Depends(auth)])
+    def research(campaign_id: str, request: Request):
+        if len(campaign_id) > 80:
+            raise HTTPException(422, detail="Invalid campaign name")
+        db = request.app.state.db
+        return {
+            "campaign": db.rows("SELECT * FROM research_campaigns WHERE id=%s", (campaign_id,)),
+            "nodes": db.rows(
+                "SELECT path,parent_id,spec,hypothesis,status,evaluation,decision FROM research_nodes WHERE campaign_id=%s ORDER BY created_at LIMIT 100",
+                (campaign_id,),
+            ),
+            "decisions": db.rows(
+                "SELECT * FROM research_decisions WHERE campaign_id=%s ORDER BY id LIMIT 200", (campaign_id,)
+            ),
+        }
+
     return app
