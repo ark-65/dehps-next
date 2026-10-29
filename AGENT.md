@@ -16,7 +16,7 @@ Owner instruction, 2026-10-29. Applies to all future work in this repository.
 
 
 - Keep research and historical regression running between draws within accepted budgets. Do not use waiting for a new draw as the default research clock.
-- Official mail forecasts may only seal during the registered draw day's Shanghai 16:59–17:00 window. `report-prepare` never bypasses this gate.
+- Latest owner mail schedule2026-10-29 supersedes the old17:00 cutoff: Shanghai draw-day17:00 starts preparation;18:50–19:00 seals;19:00 queues final mail;19:30 is the conservative internal send cutoff before20:00 shop closure. `report-prepare` never bypasses the seal gate. Preserve prior reports and append any eligible unresolved early17:00 schedule correction; never rewrite immutable facts.
 - Require frozen recent100, nested recent10 and random historical regression; preserve failed branches, finite extensions and restored parent hashes. Replay remains development evidence, not forward proof.
 - Preserve early acceptance predictions and their exclusions; never silently replace immutable predictions or count them as official mail recommendations.
 
@@ -26,3 +26,5 @@ Owner instruction, 2026-10-29. Applies to all future work in this repository.
 - Latest owner allocation 2026-10-29: training8 CPU, local inference4 CPU, planner1 CPU; 691200 capacity-seconds/day, 24 model calls/day. Preserve prior counters and formal forecast/mail timing. Keep process threads distinct from frozen training threads; complete active campaigns before changing thread configuration.
 
 - Latest owner policy 2026-10-29: local inference has no consumption billing or daily capacity/call/token quota. Display provider-reported input/output tokens only; preserve missing-count flags and historical receipts. Keep hardware8/4/1, memory/storage/concurrency safeguards and real validation; never use historical spend or call totals to disable Qwen or research.
+
+- Final recommendations and missing-coverage settlement use effective_forecast_selections. Prior17:00 mail remains immutable; PRE_FINAL is independently deduplicated. Never relax eligibility or fabricate a recommendation to meet the clock.

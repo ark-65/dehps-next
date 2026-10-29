@@ -29,7 +29,7 @@ class Mail:
         self.db = db
 
     def queue(self, kind, issue, payload, evidence, cycle_id=None):
-        if kind in ("PRE", "POST"):
+        if kind in ("PRE", "PRE_FINAL", "POST"):
             from .local_usage import report_line
 
             payload = {**payload, "lines": [*payload["lines"], report_line(self.db)]}
@@ -84,7 +84,9 @@ class Mail:
             if not row:
                 return None
             report = c.execute("SELECT * FROM mail_reports WHERE id=%s", (row["report_id"],)).fetchone()
-            if report["kind"] == "PRE" and now() >= timestamp(report["payload"]["send_deadline_utc"]):
+            if report["kind"] in ("PRE", "PRE_FINAL") and now() >= timestamp(
+                report["payload"]["send_deadline_utc"]
+            ):
                 c.execute(
                     "UPDATE mail_deliveries SET state='EXPIRED',last_error='PRE_DRAW_DEADLINE_PASSED' WHERE id=%s",
                     (row["id"],),
