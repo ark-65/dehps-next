@@ -11,7 +11,7 @@ from .errors import DomainError
 
 ZONE = ZoneInfo("Asia/Shanghai")
 GIB = 1024**3
-DAILY_CAPACITY = 7200  # CPU quota * elapsed seconds, an upper bound, not measured CPU time.
+DAILY_CAPACITY = 172800  # CPU quota * elapsed seconds, an upper bound, not measured CPU time.
 DAILY_CALLS = 24
 TERMINAL = ("BUDGET_EXHAUSTED", "COMPLETE", "SUPERSEDED", "SEARCH_EXHAUSTED")
 
@@ -190,6 +190,10 @@ class Resources:
                 (Jsonb({"reason": reason, "job": job["id"], "at": now().isoformat()}),),
             )
             return None
+        c.execute(
+            "INSERT INTO resource_state VALUES(1,%s) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload",
+            (Jsonb({"reason": "ADMITTED", "job": job["id"], "at": now().isoformat()}),),
+        )
         # Core charges are tracked separately and do not consume the research allowance.
         stored_lane = lane if research else "core_" + lane
         amount = wall * cpu if research and not closing else 0

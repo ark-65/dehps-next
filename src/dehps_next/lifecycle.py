@@ -47,7 +47,7 @@ class Lifecycle:
             else:
                 file.unlink()
 
-    def reachability(self, c):
+    def reachability(self, c, pressure=False):
         protected, registered = set(), {}
         for file in self.artifacts.root.rglob(".pending-*"):
             self.artifacts.path(str(file.relative_to(self.artifacts.root)))
@@ -93,7 +93,7 @@ class Lifecycle:
             )
         )
         recent = {r["id"] for r in campaigns if r["updated_at"] > now() - timedelta(days=DETAIL_DAYS)}
-        keep_artifacts = keep_campaigns | recent
+        keep_artifacts = keep_campaigns | (set() if pressure else recent)
         research_datasets = {r["dataset_id"] for r in campaigns if r["id"] in keep_artifacts}
         for row in c.execute("SELECT id,artifact FROM datasets"):
             add(row["artifact"], row["id"] in core_datasets | research_datasets)
@@ -169,6 +169,10 @@ class Lifecycle:
             )
             c.execute("DELETE FROM research_nodes WHERE campaign_id=%s", (identity,))
             c.execute("DELETE FROM research_campaigns WHERE id=%s", (identity,))
+        # Retain recipe exclusions for the newest eight data/numerics pairs; active data stay rooted.
+        c.execute("""DELETE FROM research_recipe_memory m WHERE (dataset_id,numeric_digest) NOT IN
+            (SELECT dataset_id,numeric_digest FROM research_recipe_memory GROUP BY dataset_id,numeric_digest ORDER BY max(last_seen_at) DESC LIMIT 8)
+            AND NOT EXISTS(SELECT 1 FROM research_campaigns r WHERE r.dataset_id=m.dataset_id AND r.status NOT IN ('BUDGET_EXHAUSTED','COMPLETE','SUPERSEDED','SEARCH_EXHAUSTED') AND r.status NOT LIKE 'BLOCKED_%%')""")
         # Preserve lifetime counts while retaining only a bounded recent accounting ledger.
         old = c.execute(
             "DELETE FROM resource_days WHERE day<current_date-32 RETURNING spent,calls"
@@ -209,7 +213,9 @@ class Lifecycle:
                 c.execute(
                     "DELETE FROM research_score_cache WHERE created_at<now()-interval '7 days' OR id IN (SELECT id FROM research_score_cache ORDER BY created_at DESC OFFSET 64)"
                 )
-            protected, keep = self.reachability(c)
+            pressure = self.artifacts.usage() >= self.db.settings.quota_bytes * 0.7
+            counts["capacity_pressure"] = pressure
+            protected, keep = self.reachability(c, pressure=pressure)
             counts["protected"] = len(protected)
             for row in c.execute(
                 "SELECT * FROM artifact_catalog WHERE state!='DELETED' AND path!=ALL(%s) ORDER BY created_at LIMIT 4096",
@@ -226,6 +232,8 @@ class Lifecycle:
                     continue
                 age = (now() - row["created_at"]).total_seconds()
                 ttl = 86400 if row["category"] in ("cache", "checkpoints") else DETAIL_DAYS * 86400
+                if pressure and row["category"].startswith("research/"):
+                    ttl = 60
                 if age < ttl:
                     continue
                 counts["candidates"] += 1

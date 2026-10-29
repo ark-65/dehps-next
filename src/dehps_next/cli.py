@@ -59,8 +59,8 @@ def main():
     research_stop.add_argument("--reason", required=True)
     program = commands.add_parser("program-enable")
     program.add_argument("--name", required=True)
-    program.add_argument("--interval", type=int, default=30)
-    program.add_argument("--max-daily", type=int, default=12)
+    program.add_argument("--interval", type=int, default=0)
+    program.add_argument("--max-daily", type=int, default=0)
     program.add_argument("--max-nodes", type=int, default=8)
     program.add_argument("--planner", choices=["local", "rules"], default="local")
     program.add_argument("--seed-program")
@@ -71,6 +71,12 @@ def main():
     program_adopt = commands.add_parser("program-adopt")
     program_adopt.add_argument("--name", required=True)
     program_adopt.add_argument("--reason", required=True)
+    continuous = commands.add_parser("program-continuous")
+    continuous.add_argument("--name", required=True)
+    continuous.add_argument("--reason", required=True)
+    numeric = commands.add_parser("numeric-adopt")
+    numeric.add_argument("--release", required=True)
+    numeric.add_argument("--reason", required=True)
     budget = commands.add_parser("budget-set")
     budget.add_argument("--capacity-seconds", type=int, required=True)
     budget.add_argument("--model-calls", type=int, required=True)
@@ -104,7 +110,7 @@ def main():
     try:
         if args.command == "init":
             db.migrate()
-            output({"schema": 6, "status": "initialized", "runtime": str(settings.runtime)})
+            output({"schema": 7, "status": "initialized", "runtime": str(settings.runtime)})
         elif args.command in ("reporter", "report-prepare", "report-acceptance"):
             from .reports import Reports
 
@@ -143,6 +149,14 @@ def main():
             from .steward import Steward
 
             output(Steward(db, artifacts).adopt(args.name, args.reason))
+        elif args.command == "program-continuous":
+            from .steward import Steward
+
+            output(Steward(db, artifacts).continuous(args.name, args.reason))
+        elif args.command == "numeric-adopt":
+            from .research_memory import adopt_numeric
+
+            output(adopt_numeric(db, args.release, args.reason))
         elif args.command == "program-disable":
             db.rows(
                 "UPDATE research_programs SET state='DISABLED',last_reason='Operator disabled automatic next topics' WHERE id=%s RETURNING id",
@@ -167,7 +181,7 @@ def main():
                     event("steward_blocked", code=getattr(exc, "code", type(exc).__name__))
                 if args.command == "steward-once":
                     break
-                stop.wait(30)
+                stop.wait(5)
         elif args.command == "sync":
             output(DataService(db, artifacts).sync())
         elif args.command == "import-json":

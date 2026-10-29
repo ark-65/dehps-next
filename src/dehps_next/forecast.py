@@ -102,7 +102,10 @@ class Forecast:
             JOIN datasets ds ON ds.id=r.dataset_id
             WHERE r.config->>'code_digest'=%s AND ds.through_issue=%s
               AND r.protocol->>'version'='recent100-tail10-random-v2'
-              AND n.anchor IS NOT NULL ORDER BY n.completed_at DESC LIMIT 64""",
+              AND n.anchor IS NOT NULL
+              AND EXISTS(SELECT 1 FROM artifact_catalog ac WHERE ac.path=n.evaluation->'scores'->>'path' AND ac.state!='DELETED')
+              AND EXISTS(SELECT 1 FROM artifact_catalog ac WHERE ac.path=n.evaluation->'publication_anchor'->>'path' AND ac.state!='DELETED')
+              ORDER BY n.completed_at DESC LIMIT 64""",
             (code_identity(), latest),
         )
         candidates, snapshots = [], {}

@@ -3,7 +3,7 @@
 from psycopg.types.json import Jsonb
 
 from .data import DataService
-from .domain import digest, now
+from .domain import digest, now, timestamp
 from .errors import DomainError
 from .lifecycle import Lifecycle
 from .release import code_identity
@@ -34,12 +34,12 @@ class Steward:
         self.db, self.artifacts = db, artifacts
         self.resources = Resources(db)
 
-    def enable(self, name, *, interval=30, max_daily=12, max_nodes=8, planner="local", seed_program=None):
+    def enable(self, name, *, interval=0, max_daily=0, max_nodes=8, planner="local", seed_program=None):
         if (
             not name
             or len(name) > 40
-            or not 10 <= interval <= 86400
-            or not 1 <= max_daily <= 12
+            or not (interval == 0 or 10 <= interval <= 86400)
+            or not 0 <= max_daily <= 12
             or not 2 <= max_nodes <= 8
             or planner not in ("rules", "local")
         ):
@@ -112,6 +112,35 @@ class Steward:
             )
         return {"program": name, "release": code_identity(), "completed_topics_preserved": len(completed)}
 
+    def continuous(self, name, reason):
+        if len(reason) < 24:
+            raise DomainError("PROGRAM_POLICY_REASON", "Record owner authorization for continuous scheduling")
+        with self.db.pool.connection() as c, c.transaction():
+            c.execute("SELECT pg_advisory_xact_lock(740141)")
+            program = c.execute("SELECT * FROM research_programs WHERE id=%s FOR UPDATE", (name,)).fetchone()
+            if not program:
+                raise DomainError("UNKNOWN_PROGRAM", "Program not found")
+            config = {**program["config"], "interval": 0, "max_daily": 0}
+            c.execute(
+                "INSERT INTO resource_policy_changes(policy,reason) VALUES(%s,%s)",
+                (
+                    Jsonb(
+                        {
+                            "operation": "CONTINUOUS_PROGRAM",
+                            "program": name,
+                            "old_config": program["config"],
+                            "new_config": config,
+                            "counters_preserved": True,
+                        }
+                    ),
+                    reason,
+                ),
+            )
+            c.execute(
+                "UPDATE research_programs SET config=%s,next_due=now() WHERE id=%s", (Jsonb(config), name)
+            )
+        return {"program": name, "interval": 0, "round_cap": None, "capacity_budget_unchanged": True}
+
     def tick(self):
         output = []
         with self.db.pool.connection() as c, c.transaction():
@@ -159,10 +188,12 @@ class Steward:
                         p["id"],
                     ),
                 )
-                return "COOLDOWN", current["status"]
+                if config["interval"]:
+                    return "COOLDOWN", current["status"]
+                p = c.execute("SELECT * FROM research_programs WHERE id=%s", (p["id"],)).fetchone()
         if p["next_due"] > now():
             return "COOLDOWN", p["next_due"].isoformat()
-        if p["launch_day"] == day and p["launched_today"] >= config["max_daily"]:
+        if config["max_daily"] and p["launch_day"] == day and p["launched_today"] >= config["max_daily"]:
             return "WAITING_DAILY_BUDGET", "Campaign count resets at Asia/Shanghai midnight"
         today = c.execute("SELECT * FROM resource_days WHERE day=%s", (day,)).fetchone()
         policy = Resources.policy(c)
@@ -206,8 +237,8 @@ class Steward:
                 break
         if identity is None:
             return (
-                "WAITING_NEW_DATA",
-                "Finite registered recipe space exhausted; no repeated finished recipes",
+                "SEARCH_SPACE_EXHAUSTED",
+                "All registered curricula exhausted; no repeated fits or fake busy work",
             )
         generation = p["generation"] + 1
         name = f"{p['id']}-{generation}-{identity[:8]}"
@@ -232,7 +263,10 @@ class Steward:
         with self.db.pool.connection() as c, c.transaction():
             c.execute("SELECT pg_advisory_xact_lock(740140)")
             self.resources.reap(c)
-        preview = Lifecycle(self.db, self.artifacts).collect(apply=False)
-        # Always preview the current reachability before the automatic sweep.
-        sweep = Lifecycle(self.db, self.artifacts).collect(apply=True)
+        last = self.db.rows("SELECT payload FROM maintenance_state WHERE id=1")
+        if not last or (now() - timestamp(last[0]["payload"]["at"])).total_seconds() >= 30:
+            preview = Lifecycle(self.db, self.artifacts).collect(apply=False)
+            sweep = Lifecycle(self.db, self.artifacts).collect(apply=True)
+        else:
+            preview = sweep = {"reason": "GC_NOT_DUE", "interval_seconds": 30}
         return {"gc_preview": preview, "gc": sweep, "programs": self.tick()}
