@@ -1,0 +1,10 @@
+{"scope": "REAL_CLONED_SCORE_RECOMPUTATION_NO_NEW_TRAINING", "release": "c3debd83d4ea1d6d3b4cec707b8e7598b2bb0f68a4fad0f2cc6fe3519baa3211", "calendar": {"valid_from": "2026-10-05", "valid_until": "2026-12-31", "weekdays": [1, 3, 6], "draw_time": "21:15", "prepare_time": "17:00", "seal_time": "18:50", "mail_time": "19:00", "deadline_time": "19:30", "policy": "evening-preparation-v3", "deadline_note": "Owner-selected conservative mail cutoff before the shop closes at20:00; not an official sales cutoff", "rules_source": "https://www.swlc.net.cn/lottery/ssq.html?limit=30&view=previous", "closure_source": "https://www.gdfc.org.cn/datas/content/content_280552.html?subjectID=91", "closure_note": "2026 National Day closure ends October4; policy coverage starts October5"}, "preview_state": "NO_ELIGIBLE_CANDIDATE", "candidate_count": 43, "real_reasons": ["RECENT_BLUE_BASELINE_REGRESSION"]}
+{"virtual_at": "2026-10-29T16:59:59+08:00", "phase": "CONTINUOUS_RESEARCH", "reason": "WAITING_PREPARATION", "no_final_decision_or_mail": true}
+{"virtual_at": "2026-10-29T17:00:00+08:00", "phase": "FINAL_PREPARATION", "reason": "FINAL_PREPARATION", "no_final_decision_or_mail": true}
+{"virtual_at": "2026-10-29T18:49:59+08:00", "phase": "FINAL_PREPARATION", "reason": "FINAL_PREPARATION", "no_final_decision_or_mail": true}
+{"database_seal_boundary": "2026-10-29T18:49:59+08:00", "result": "REJECTED"}
+{"database_seal_boundary": "2026-10-29T19:00:00+08:00", "result": "REJECTED"}
+{"premature_missing_database_guard": "REJECTED"}
+{"scope": "VIRTUAL_CLOCK_QUALIFICATION_ROUTING_FIXTURE_NO_SMTP", "seal_at": "18:55", "mail_at": "19:00:01", "single_PRE_FINAL": true, "old_PRE_unchanged": true, "effective_decisions": 1, "gc_formal_evidence_protected": true, "top100_distinct": true, "no_real_forward_claim": true}
+{"deadline_guard": "PRE_FINAL_EXPIRED_WITHOUT_SMTP", "state": "EXPIRED"}
+{"scope": "ISOLATED_MISSING_CANDIDATE_ROUTE_NO_SMTP", "first": "NO_VALIDATED_FORECAST_AT_FINAL_MAIL", "second": "PRE_REPORT_ALREADY_QUEUED", "effective_missing_decisions": 1, "final_status_reports": 1, "no_manufactured_prediction": true}

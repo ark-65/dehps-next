@@ -1,4 +1,4 @@
-"""Select validated research anchors at the final minute, without retraining or early sealing."""
+"""Select validated anchors after evening preparation, preserving prior reports and validation."""
 
 import json
 import math
@@ -133,20 +133,26 @@ class Forecast:
         }
 
     def for_report(self, target, missing_evidence):
-        # Serialize the 17:00 report with the final sealing transaction. A seal that is
+        if now().astimezone(ZONE) < target["mail_time"]:
+            raise DomainError("FINAL_REPORT_TOO_EARLY", "Preparation cannot mark a draw missing before19:00")
+        # Serialize the final report with the final sealing transaction. A seal that is
         # committing at the boundary must never be mistaken for a missing prediction.
         with self.db.pool.connection() as c, c.transaction():
             c.execute("SELECT pg_advisory_xact_lock(740142)")
             prediction = c.execute(
-                """SELECT p.*,cy.dataset_id,ds.through_issue FROM forecast_selections s
+                """SELECT p.*,cy.dataset_id,ds.through_issue FROM effective_forecast_selections s
                 JOIN predictions p ON p.cycle_id=s.cycle_id JOIN cycles cy ON cy.id=p.cycle_id
                 JOIN datasets ds ON ds.id=cy.dataset_id WHERE s.issue=%s""",
                 (target["issue"],),
             ).fetchone()
             if prediction:
                 return prediction
+            if c.execute(
+                "SELECT 1 FROM effective_forecast_selections WHERE issue=%s", (target["issue"],)
+            ).fetchone():
+                return None
             c.execute(
-                "INSERT INTO forecast_selections(issue,state,evidence) VALUES(%s,'MISSED',%s) ON CONFLICT DO NOTHING",
+                "INSERT INTO forecast_final_selections(issue,state,evidence) VALUES(%s,'MISSED',%s) ON CONFLICT DO NOTHING",
                 (target["issue"], Jsonb(missing_evidence)),
             )
         return None
@@ -155,9 +161,9 @@ class Forecast:
         clock = now().astimezone(ZONE)
         if not target["seal_time"] <= clock < target["mail_time"]:
             raise DomainError(
-                "WAITING_FINAL_SEAL_WINDOW", "Only seal 16:59 <= Shanghai time < 17:00 on the draw day"
+                "WAITING_FINAL_SEAL_WINDOW", "Only seal 18:50 <= Shanghai time < 19:00 on the draw day"
             )
-        if self.db.rows("SELECT 1 FROM forecast_selections WHERE issue=%s", (target["issue"],)):
+        if self.db.rows("SELECT 1 FROM effective_forecast_selections WHERE issue=%s", (target["issue"],)):
             return "ALREADY_DECIDED"
         candidates = self.candidates()
         if not candidates or not candidates[0][1]["eligible"]:
@@ -195,10 +201,12 @@ class Forecast:
         cycle = digest([LOOP, target["issue"]])
         with self.db.pool.connection() as c, c.transaction():
             c.execute("SELECT pg_advisory_xact_lock(740142)")
-            if c.execute("SELECT 1 FROM forecast_selections WHERE issue=%s", (target["issue"],)).fetchone():
+            if c.execute(
+                "SELECT 1 FROM effective_forecast_selections WHERE issue=%s", (target["issue"],)
+            ).fetchone():
                 return "ALREADY_DECIDED"
             if not target["seal_time"] <= now().astimezone(ZONE) < target["mail_time"]:
-                raise DomainError("MISSED_FINAL_SEAL_WINDOW", "Do not publish after 17:00")
+                raise DomainError("MISSED_FINAL_SEAL_WINDOW", "Do not publish after 19:00")
             latest = c.execute(
                 "SELECT issue FROM effective_draws WHERE available_at<=now() AND observed_at<=now() ORDER BY draw_at DESC LIMIT 1"
             ).fetchone()
@@ -271,7 +279,7 @@ class Forecast:
                 ),
             )
             c.execute(
-                "INSERT INTO forecast_selections(issue,cycle_id,state,evidence) VALUES(%s,%s,'SEALED_VALIDATED_DEVELOPMENT',%s)",
+                "INSERT INTO forecast_final_selections(issue,cycle_id,state,evidence) VALUES(%s,%s,'SEALED_VALIDATED_DEVELOPMENT',%s)",
                 (target["issue"], cycle, Jsonb(evidence)),
             )
         return "SEALED_VALIDATED_DEVELOPMENT"
