@@ -3,7 +3,8 @@ x-app: &app
   image: dehps-next:p0p1
   build: .
   env_file: .env
-  environment:
+  environment: &app-env
+    DEHPS_NEXT_TRAINING_THREADS: "8"
     DEHPS_NEXT_RUNTIME: /app/runtime/application
     DEHPS_NEXT_THREADS: "2"
     DEHPS_NEXT_QUOTA_MIB: "1024"
@@ -55,9 +56,22 @@ services:
   worker:
     <<: *app
     command: [worker, --role, compute]
+    cpus: 8
+    environment:
+      <<: *app-env
+      DEHPS_NEXT_THREADS: "8"
+      OPENBLAS_NUM_THREADS: "8"
+      OMP_NUM_THREADS: "8"
+      MKL_NUM_THREADS: "8"
   planner:
     <<: *app
     command: [worker, --role, planning]
+    environment:
+      <<: *app-env
+      DEHPS_NEXT_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
     mem_limit: 1g
     cpus: 1
   steward:

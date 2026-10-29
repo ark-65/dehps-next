@@ -11,7 +11,9 @@ from .errors import DomainError
 
 ZONE = ZoneInfo("Asia/Shanghai")
 GIB = 1024**3
-DAILY_CAPACITY = 172800  # CPU quota * elapsed seconds, an upper bound, not measured CPU time.
+TRAINING_CPUS = 8
+COMPUTE_WALL = 120
+DAILY_CAPACITY = 691200  # CPU quota * elapsed seconds, an upper bound, not measured CPU time.
 DAILY_CALLS = 24
 TERMINAL = ("BUDGET_EXHAUSTED", "COMPLETE", "SUPERSEDED", "SEARCH_EXHAUSTED")
 
@@ -130,7 +132,9 @@ class Resources:
                 (job["research_node_id"],),
             ).fetchone()["closing"]
         lane = "planning" if job["kind"] == "RESEARCH_PLAN" else "compute"
-        wall, cpu, write = (150, 5, 4 * 1024**2) if lane == "planning" else (120, 2, 32 * 1024**2)
+        wall, cpu, write = (
+            (150, 5, 4 * 1024**2) if lane == "planning" else (COMPUTE_WALL, TRAINING_CPUS, 32 * 1024**2)
+        )
         if lane == "planning" and not closing:
             from .research_agent import use_local_model
 
@@ -146,7 +150,7 @@ class Resources:
         if closing:
             wall, cpu, write = 5, 1, 64 * 1024
         if not research:
-            wall, cpu, write = 600, 2, 64 * 1024**2
+            wall, cpu, write = 600, TRAINING_CPUS, 64 * 1024**2
         reason = None
         lifetime = c.execute(
             "SELECT coalesce(sum(wall_seconds),0) AS n FROM resource_reservations WHERE job_id=%s AND state!='ACTIVE'",

@@ -8,7 +8,7 @@ from .errors import DomainError
 from .lifecycle import Lifecycle
 from .release import code_identity
 from .research import Research
-from .resources import TERMINAL, ZONE, Resources
+from .resources import COMPUTE_WALL, TERMINAL, TRAINING_CPUS, ZONE, Resources
 
 TOPICS = [
     {
@@ -197,9 +197,9 @@ class Steward:
             return "WAITING_DAILY_BUDGET", "Campaign count resets at Asia/Shanghai midnight"
         today = c.execute("SELECT * FROM resource_days WHERE day=%s", (day,)).fetchone()
         policy = Resources.policy(c)
-        if (today and (today["spent"] + today["reserved"] + 240 > policy["capacity"])) or policy[
-            "capacity"
-        ] < 240:
+        if (
+            today and (today["spent"] + today["reserved"] + COMPUTE_WALL * TRAINING_CPUS > policy["capacity"])
+        ) or policy["capacity"] < COMPUTE_WALL * TRAINING_CPUS:
             return (
                 "WAITING_DAILY_BUDGET",
                 "Capacity seconds exhausted; learned direction search does not require another LLM call",
