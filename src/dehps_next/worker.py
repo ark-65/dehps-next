@@ -12,6 +12,7 @@ from .domain import now
 from .errors import DomainError, LeaseLost
 from .pipeline import Pipeline
 from .research import Research
+from .resources import Resources
 from .scheduler import Scheduler
 
 log = logging.getLogger("dehps_next")
@@ -30,6 +31,9 @@ class Worker:
         self.pipeline = Pipeline(db, artifacts)
         self.research = Research(db, artifacts)
         self.role = role
+        self.resources = Resources(db)
+        self.artifacts.db = db
+        db.artifacts = artifacts
         torch.set_num_threads(db.settings.threads)
 
     def status(self, state, job=None, error=None):
@@ -53,6 +57,7 @@ class Worker:
             self.status("IDLE")
             return False
         self.status("RUNNING", job["id"])
+        self.artifacts.reservation_token = job["token"]
         finished, lost = threading.Event(), threading.Event()
 
         def heartbeat():
@@ -65,15 +70,28 @@ class Worker:
                     lost.set()
                     return
 
+        checked = [0.0]
+
         def pulse():
             if lost.is_set():
                 raise LeaseLost()
             if self.stop.is_set():
                 raise DomainError("INTERRUPTED", "Worker was asked to stop; task is recoverable")
+            if job["research_node_id"] and time.monotonic() - checked[0] > 1:
+                checked[0] = time.monotonic()
+                if time.monotonic() - started > job["admission"]["wall_cap"]:
+                    raise DomainError("YIELD_WALL_BUDGET", "Resume from the last saved block")
+                if job["kind"] == "RESEARCH_EVALUATE" and self.db.rows(
+                    "SELECT 1 FROM jobs WHERE cycle_id IS NOT NULL AND state IN ('READY','RUNNING') LIMIT 1"
+                ):
+                    raise DomainError(
+                        "YIELD_CORE_PRIORITY", "Yield compute lane to formal learning/prediction"
+                    )
 
         thread = threading.Thread(target=heartbeat, daemon=True)
         thread.start()
         started = time.monotonic()
+        cpu_started = time.process_time()
         try:
             if job["kind"].startswith("RESEARCH_"):
                 self.research.execute(job, pulse)
@@ -89,7 +107,18 @@ class Worker:
         except Exception as exc:
             code = exc.code if isinstance(exc, DomainError) else type(exc).__name__
             try:
-                self.db.fail(job, code)
+                if code.startswith("YIELD_") or code in (
+                    "LOCAL_INFERENCE_UNAVAILABLE",
+                    "LOCAL_MODEL_MISSING",
+                    "INTERRUPTED",
+                ):
+                    self.db.defer(
+                        job,
+                        code,
+                        300 if code in ("LOCAL_INFERENCE_UNAVAILABLE", "LOCAL_MODEL_MISSING") else 15,
+                    )
+                else:
+                    self.db.fail(job, code)
             except LeaseLost:
                 pass
             event("job_failed", kind=job["kind"], job=job["id"], code=code)
@@ -98,6 +127,8 @@ class Worker:
         finally:
             finished.set()
             thread.join(timeout=3)
+            self.resources.finish(job["token"], time.monotonic() - started, time.process_time() - cpu_started)
+            self.artifacts.reservation_token = None
         return True
 
     def run(self, max_jobs=None):

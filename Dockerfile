@@ -1,6 +1,7 @@
 ARG BASE_IMAGE=python:3.12-slim
 FROM ${BASE_IMAGE}
 WORKDIR /app
+LABEL io.dehps-next.owner="dehps-next"
 COPY requirements.lock /tmp/requirements.lock
 ARG PYPI_INDEX_URL=https://pypi.org/simple
 RUN grep '^torch==' /tmp/requirements.lock > /tmp/torch.lock \

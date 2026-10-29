@@ -41,6 +41,9 @@ class Database:
             if not c.execute("SELECT 1 FROM schema_migrations WHERE version=3").fetchone():
                 c.execute(files("dehps_next").joinpath("migrations/003_up.sql").read_text())
                 c.execute("INSERT INTO schema_migrations VALUES(3)")
+            if not c.execute("SELECT 1 FROM schema_migrations WHERE version=4").fetchone():
+                c.execute(files("dehps_next").joinpath("migrations/004_up.sql").read_text())
+                c.execute("INSERT INTO schema_migrations VALUES(4)")
 
     def rows(self, sql, params=()):
         with self.pool.connection() as c:
@@ -49,11 +52,12 @@ class Database:
     def claim(self, worker, role="all"):
         token = str(uuid.uuid4())
         with self.pool.connection() as c, c.transaction():
+            c.execute("SELECT pg_advisory_xact_lock(740139)")
             c.execute("""UPDATE attempts SET state='LOST', ended_at=now()
                 WHERE state='RUNNING' AND id IN
                 (SELECT token FROM jobs WHERE state='RUNNING' AND lease_until<now())""")
-            c.execute("""UPDATE jobs SET state=CASE WHEN attempts>=3 THEN 'FAILED' ELSE 'READY' END,
-                error_code='LEASE_EXPIRED', updated_at=now() WHERE state='RUNNING' AND lease_until<now()""")
+            c.execute("""UPDATE jobs SET state=CASE WHEN failures+1>=3 THEN 'FAILED' ELSE 'READY' END,
+                failures=failures+1,error_code='LEASE_EXPIRED', updated_at=now() WHERE state='RUNNING' AND lease_until<now()""")
             roles = {"all": "TRUE", "compute": "kind!='RESEARCH_PLAN'", "planning": "kind='RESEARCH_PLAN'"}
             if role not in roles:
                 raise ValueError("Unknown worker role")
@@ -65,6 +69,11 @@ class Database:
             ).fetchone()
             if row is None:
                 return None
+            from .resources import Resources
+
+            admission = Resources(self).admit(c, row, token)
+            if admission is None:
+                return None
             row = c.execute(
                 """UPDATE jobs SET state='RUNNING',token=%s,attempts=attempts+1,
                 lease_until=now()+(%s * interval '1 second'),updated_at=now() WHERE id=%s RETURNING *""",
@@ -74,9 +83,11 @@ class Database:
                 "INSERT INTO attempts(id,job_id,state,worker) VALUES(%s,%s,'RUNNING',%s)",
                 (token, row["id"], worker),
             )
+            row["admission"] = admission
             return row
 
     def fence(self, c, job):
+        c.execute("SELECT pg_advisory_xact_lock(740139)")
         if not c.execute(
             """SELECT 1 FROM jobs WHERE id=%s AND token=%s AND state='RUNNING'
             AND lease_until>now() FOR UPDATE""",
@@ -110,12 +121,24 @@ class Database:
         with self.pool.connection() as c, c.transaction():
             self.fence(c, job)
             c.execute(
-                """UPDATE jobs SET state=CASE WHEN attempts>=3 THEN 'FAILED' ELSE 'READY' END,
+                """UPDATE jobs SET state=CASE WHEN failures+1>=3 THEN 'FAILED' ELSE 'READY' END,failures=failures+1,
                 error_code=%s,not_before=now()+interval '10 seconds',lease_until=NULL,updated_at=now()
                 WHERE id=%s""",
                 (code, job["id"]),
             )
             c.execute(
                 "UPDATE attempts SET state='FAILED',error_code=%s,ended_at=now() WHERE id=%s",
+                (code, job["token"]),
+            )
+
+    def defer(self, job, code, seconds=15):
+        with self.pool.connection() as c, c.transaction():
+            self.fence(c, job)
+            c.execute(
+                "UPDATE jobs SET state='READY',error_code=%s,not_before=now()+(%s*interval '1 second'),lease_until=NULL,updated_at=now() WHERE id=%s",
+                (code, seconds, job["id"]),
+            )
+            c.execute(
+                "UPDATE attempts SET state='YIELDED',error_code=%s,ended_at=now() WHERE id=%s",
                 (code, job["token"]),
             )

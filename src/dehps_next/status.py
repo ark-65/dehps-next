@@ -2,10 +2,16 @@ import os
 import random
 
 from .domain import digest
+from .errors import DomainError
 from .release import code_identity
+from .resources import Resources
 
 
 def get_status(db, artifacts):
+    try:
+        host_capacity = Resources(db).telemetry()
+    except DomainError as exc:
+        host_capacity = {"complete": False, "reason": exc.code}
     loops = db.rows("SELECT id,mode,state,config,updated_at FROM loops ORDER BY created_at")
     for loop in loops:
         evidence = db.rows(
@@ -30,6 +36,8 @@ def get_status(db, artifacts):
         }
     return {
         "code_digest": code_identity(),
+        "host_capacity": host_capacity,
+        "budget_policy": db.rows("SELECT capacity,calls FROM resource_policy WHERE id=1")[0],
         "loops": loops,
         "jobs": db.rows("SELECT state,kind,count(*) AS count FROM jobs GROUP BY state,kind"),
         "workers": db.rows("SELECT * FROM worker_status ORDER BY id"),
@@ -41,7 +49,17 @@ def get_status(db, artifacts):
         "owned_artifact_bytes": artifacts.usage(),
         "artifact_quota_bytes": db.settings.quota_bytes,
         "database_bytes": db.rows("SELECT pg_database_size(current_database()) AS bytes")[0]["bytes"],
-        "storage_scope": "P1 artifact bound only; whole-host envelope and TTL GC are P3 pending",
+        "storage_scope": "P3 registered Next artifacts, PostgreSQL/WAL, inference cache, images/log bounds and shared build-cache upper bound",
+        "programs": db.rows(
+            "SELECT id,state,generation,current_campaign,next_due,last_reason,launched_today FROM research_programs"
+        ),
+        "capacity_days": db.rows("SELECT * FROM resource_days ORDER BY day DESC LIMIT 7"),
+        "active_reservations": db.rows(
+            "SELECT job_id,lane,cpu_reserved,write_reserved,written FROM resource_reservations WHERE state='ACTIVE'"
+        ),
+        "resource_wait": db.rows("SELECT payload FROM resource_state"),
+        "maintenance": db.rows("SELECT payload FROM maintenance_state"),
+        "retired_research": db.rows("SELECT * FROM research_rollups"),
         "research_campaigns": db.rows(
             "SELECT id,status,selected_node,updated_at FROM research_campaigns ORDER BY created_at"
         ),

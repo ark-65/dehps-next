@@ -1,11 +1,12 @@
 """Single authoritative branch controller, dispatched through the existing leased queue."""
 
 import json
+from contextlib import nullcontext
 
 from psycopg.types.json import Jsonb
 
 from .data import DataService
-from .domain import canonical, digest, now
+from .domain import digest
 from .errors import DomainError
 from .release import code_identity
 from .research_compute import compute_node, restore_anchor, validate_spec
@@ -40,13 +41,30 @@ class Research:
             (digest([node, kind]), node, kind),
         )
 
-    def create(self, name, *, planner="rules", max_nodes=3, recent=60, historical=200):
+    def create(
+        self,
+        name,
+        *,
+        planner="rules",
+        max_nodes=3,
+        recent=60,
+        historical=200,
+        root_spec=None,
+        topic=None,
+        program_id=None,
+        launch_identity=None,
+        connection=None,
+    ):
         if planner not in ("rules", "local") or not 2 <= max_nodes <= 8 or not name or len(name) > 80:
             raise DomainError("RESEARCH_POLICY", "Invalid campaign, planner or node budget")
+        root_spec = root_spec or ROOT_SPEC
+        validate_spec(root_spec)
         config = {
             "planner": planner,
             "max_nodes": max_nodes,
-            "root_spec": ROOT_SPEC,
+            "root_spec": root_spec,
+            "topic": topic,
+            "numeric_threads": self.db.settings.threads,
             "code_digest": code_identity(),
             "node_seconds": 600,
             "recent": recent,
@@ -54,29 +72,30 @@ class Research:
             "max_model_calls": 8,
             "purpose": "DEVELOPMENT_RESEARCH_NOT_FORMAL_PREDICTION",
         }
-        with self.db.pool.connection() as c, c.transaction():
+        with nullcontext(connection) if connection else self.db.pool.connection() as c, c.transaction():
             c.execute("SELECT pg_advisory_xact_lock(740134)")
             previous = c.execute("SELECT * FROM research_campaigns WHERE id=%s", (name,)).fetchone()
             if previous:
                 if previous["config"] != config:
                     raise DomainError("CAMPAIGN_CONFLICT", "Existing research config is frozen")
                 return previous
-            cutoff = now()
-            dataset = DataService(self.db, self.artifacts).snapshot(
-                c, cutoff=cutoff, target_draw_at=cutoff, mode="REPLAY"
-            )
+            dataset = DataService(self.db, self.artifacts).research_snapshot(c)
             protocol = make_protocol(dataset["sample_count"], recent, historical)
             c.execute(
                 """INSERT INTO research_campaigns(id,config,dataset_id,protocol)
                 VALUES(%s,%s,%s,%s)""",
                 (name, Jsonb(config), dataset["id"], Jsonb(protocol)),
             )
+            c.execute(
+                "UPDATE research_campaigns SET program_id=%s,topic=%s,identity=%s WHERE id=%s",
+                (program_id, topic["name"] if topic else None, launch_identity, name),
+            )
             self._node(
                 c,
                 name,
                 "1",
                 None,
-                ROOT_SPEC,
+                root_spec,
                 {"hypothesis": "Frozen prior-only neural baseline", "source": "ROOT_CONTRACT"},
             )
             self.decision(
@@ -107,7 +126,7 @@ class Research:
             if not c.execute("SELECT pg_try_advisory_xact_lock(740134) AS locked").fetchone()["locked"]:
                 return
             campaigns = c.execute(
-                "SELECT * FROM research_campaigns WHERE status NOT IN ('BUDGET_EXHAUSTED','COMPLETE','SUPERSEDED')"
+                "SELECT * FROM research_campaigns WHERE status NOT IN ('BUDGET_EXHAUSTED','COMPLETE','SUPERSEDED','SEARCH_EXHAUSTED') AND status NOT LIKE 'BLOCKED_%%'"
             ).fetchall()
             for campaign in campaigns:
                 if campaign["config"]["code_digest"] != code_identity():
@@ -147,7 +166,22 @@ class Research:
 
     def evaluate(self, job, node, pulse):
         snapshot = json.loads(self.artifacts.read(node["dataset_artifact"]))
-        saved = json.loads(self.artifacts.read(job["checkpoint"])) if job["checkpoint"] else None
+        from .scores import decode, encode
+
+        saved = decode(self.artifacts.read(job["checkpoint"])) if job["checkpoint"] else None
+        cache_key = digest(
+            [
+                node["spec"],
+                node["protocol"]["digest"],
+                node["dataset_artifact"]["sha256"],
+                node["config"]["code_digest"],
+                node["config"].get("numeric_threads", 2),
+            ]
+        )
+        cached = self.db.rows("SELECT artifact FROM research_score_cache WHERE id=%s", (cache_key,))
+        if saved is None and cached:
+            saved = decode(self.artifacts.read(cached[0]["artifact"]))
+            saved["identity"] = digest([node["spec"], node["protocol"]["digest"], snapshot["cutoff"]])
         parent = (
             self.db.rows("SELECT * FROM research_nodes WHERE id=%s", (node["parent_id"],))
             if node["parent_id"]
@@ -160,7 +194,7 @@ class Research:
             self.db.heartbeat(job)
             slot = (len(payload["rows"]) // 8) % 2
             ref = self.artifacts.write(
-                canonical(payload).encode(),
+                encode(payload["rows"], payload["identity"]),
                 category="checkpoints",
                 key=f"{job['id']}-{job['token']}-{slot}.pt",
             )
@@ -176,7 +210,10 @@ class Research:
             initial=initial,
             seconds=node["config"]["node_seconds"],
         )
-        score_ref = self.artifacts.write(canonical(scores).encode(), category="research/scores")
+        execution["history_source"] = (
+            "TASK_CHECKPOINT" if job["checkpoint"] else "SHARED_SCORE_CACHE" if cached else "FRESH_PRIOR_FITS"
+        )
+        score_ref = self.artifacts.write(encode(scores), category="research/scores")
         anchor_ref = self.artifacts.write(anchor_bytes, category="research/anchors")
         evaluation = {
             "scores": score_ref,
@@ -186,13 +223,17 @@ class Research:
             "evidence": node["protocol"]["evidence"],
         }
         if parent:
-            parent_scores = json.loads(self.artifacts.read(parent[0]["evaluation"]["scores"]))
+            parent_scores = decode(self.artifacts.read(parent[0]["evaluation"]["scores"]))["rows"]
             verdict = review(parent_scores, scores, node["protocol"])
         else:
             verdict = {"verdict": "ACCEPT_BASELINE", "protocol_digest": node["protocol"]["digest"]}
         pulse()
         with self.db.pool.connection() as c, c.transaction():
             self.db.fence(c, job)
+            c.execute(
+                "INSERT INTO research_score_cache(id,artifact) VALUES(%s,%s) ON CONFLICT(id) DO UPDATE SET artifact=excluded.artifact,created_at=now()",
+                (cache_key, Jsonb(score_ref)),
+            )
             c.execute(
                 """UPDATE research_nodes SET evaluation=%s,anchor=%s,decision=%s,status=%s,
                 completed_at=now() WHERE id=%s""",
@@ -253,7 +294,26 @@ class Research:
         if campaign["config"]["planner"] == "local":
             from .research_agent import propose
 
-            proposal = propose(campaign, nodes, pulse, self.db, self.artifacts, job)
+            try:
+                proposal = propose(campaign, nodes, pulse, self.db, self.artifacts, job)
+            except DomainError as exc:
+                if exc.code != "SEARCH_SPACE_EXHAUSTED":
+                    raise
+                with self.db.pool.connection() as c, c.transaction():
+                    self.db.fence(c, job)
+                    c.execute(
+                        "UPDATE research_campaigns SET status='SEARCH_EXHAUSTED',updated_at=now() WHERE id=%s",
+                        (campaign["id"],),
+                    )
+                    self.decision(
+                        c,
+                        campaign["id"],
+                        context["id"],
+                        "SEARCH_SPACE_EXHAUSTED",
+                        {"reason": "No novel accepted recipe; move to next bounded question"},
+                    )
+                    self.db.complete(c, job)
+                return
             spec.update(proposal["spec"])
             hypothesis = proposal
         elif not siblings:

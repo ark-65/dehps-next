@@ -1,0 +1,920 @@
+{
+  "runtime_digest": "3a64503d1a6a67e7118393abb6cce14d81a1d37a2408dd01788afdf2b3660877",
+  "program": {
+    "id": "p3-final-validation",
+    "config": {
+      "scope": "DEVELOPMENT_ONLY",
+      "topics": [
+        {
+          "name": "spectral-locality",
+          "methods": [
+            "fft",
+            "ridge"
+          ],
+          "question": "Can local spectral smoothing reduce variance without harming blue calibration?"
+        },
+        {
+          "name": "calibration-stability",
+          "methods": [
+            "newton",
+            "ridge"
+          ],
+          "question": "Can prior-only calibration or shrinkage correct overconfidence seen in prior failed branches?"
+        },
+        {
+          "name": "regularized-history",
+          "methods": [
+            "ridge",
+            "fft",
+            "newton"
+          ],
+          "question": "Which representation and shrinkage survives recent versus dispersed historical checks?"
+        }
+      ],
+      "planner": "local",
+      "interval": 10,
+      "max_daily": 2,
+      "max_nodes": 2,
+      "code_digest": "3a64503d1a6a67e7118393abb6cce14d81a1d37a2408dd01788afdf2b3660877"
+    },
+    "state": "WAITING_DAILY_BUDGET",
+    "generation": 2,
+    "current_campaign": null,
+    "next_due": "2026-10-29 05:47:33.692991+00:00",
+    "completed": [
+      "8931227dd034e63b439d9695b796918d8673ab941a8d96dbcd8115a029432fb4",
+      "558d644882ed6125a904cafd1596976fc8c451849c4963934d340d02638c37b1"
+    ],
+    "last_dataset": "7c8b0a1684841e64891124cff7d0f0d83434c3f7aa99a21a2435e7a6c2eaa413",
+    "champion_spec": {
+      "epochs": 12,
+      "hidden": 128,
+      "method": "newton",
+      "window": 16,
+      "weight_decay": 0.01,
+      "learning_rate": 0.002,
+      "train_history": 256
+    },
+    "launch_day": "2026-10-29",
+    "launched_today": 2,
+    "last_reason": "Campaign count resets at Asia/Shanghai midnight",
+    "created_at": "2026-10-29 05:39:52.474574+00:00",
+    "updated_at": "2026-10-29 05:47:53.733662+00:00"
+  },
+  "campaigns": [
+    {
+      "id": "p3-final-validation-1-8931227d",
+      "topic": "spectral-locality",
+      "status": "BUDGET_EXHAUSTED",
+      "dataset_id": "7c8b0a1684841e64891124cff7d0f0d83434c3f7aa99a21a2435e7a6c2eaa413",
+      "created_at": "2026-10-29 05:40:22.496651+00:00",
+      "updated_at": "2026-10-29 05:41:46.581609+00:00"
+    },
+    {
+      "id": "p3-final-validation-2-558d6448",
+      "topic": "calibration-stability",
+      "status": "BUDGET_EXHAUSTED",
+      "dataset_id": "7c8b0a1684841e64891124cff7d0f0d83434c3f7aa99a21a2435e7a6c2eaa413",
+      "created_at": "2026-10-29 05:42:22.866460+00:00",
+      "updated_at": "2026-10-29 05:46:59.975624+00:00"
+    }
+  ],
+  "nodes": [
+    {
+      "campaign": "p3-final-validation-1-8931227d",
+      "topic": "spectral-locality",
+      "path": "1",
+      "spec": {
+        "epochs": 12,
+        "hidden": 128,
+        "method": "raw",
+        "window": 16,
+        "weight_decay": 0.0,
+        "learning_rate": 0.002,
+        "train_history": 256
+      },
+      "status": "ACCEPT_BASELINE",
+      "evaluation": {
+        "scores": {
+          "path": "research/scores/1ee25b547c509c0c371d53bce93dbff549b292538122f231c202305322c29a07",
+          "bytes": 81420,
+          "sha256": "1ee25b547c509c0c371d53bce93dbff549b292538122f231c202305322c29a07"
+        },
+        "summary": {
+          "n": 254,
+          "red_brier": 0.16820357122137816,
+          "blue_log_loss": 2.9037841682507066,
+          "blue_top1_hits": 18,
+          "blue_top1_rate": 0.07086614173228346
+        },
+        "evidence": "DEVELOPMENT_REPLAY_NOT_FORWARD_OR_PROTECTED_HOLDOUT",
+        "execution": {
+          "history_source": "FRESH_PRIOR_FITS",
+          "resumed_origins": 0,
+          "step_count_scope": "unique_completed_fits;excludes_interrupted_or_recomputed_work",
+          "anchor_weight_digest": "a5a8b2fa182465fa2f42e347bfdac06524bee1b089ed36564e0165541b4e50db",
+          "seconds_this_attempt": 6.5888,
+          "anchor_optimizer_digest": "69fa1d3e4e79e8b5ffdbca0e7a36c222eb2cf14ceec4bd363250f03ffe7c8426",
+          "anchor_mathematical_digest": "2e7a1aa100a1266af873c39d2f4f8cb78a61a87e1c162674bea5e1790c01a07a",
+          "all_origin_parameters_updated": true,
+          "committed_origin_and_anchor_steps": 3540,
+          "origin_fits_executed_this_attempt": 294,
+          "anchor_inherited_compatible_parent": false,
+          "gradient_steps_executed_this_attempt": 3540
+        },
+        "protocol_digest": "ad8b2ec1c933317b43e476d3f8dc9474d742303e8481e9c2383ceabe7cc18bf6"
+      },
+      "decision": {
+        "verdict": "ACCEPT_BASELINE",
+        "protocol_digest": "ad8b2ec1c933317b43e476d3f8dc9474d742303e8481e9c2383ceabe7cc18bf6"
+      }
+    },
+    {
+      "campaign": "p3-final-validation-1-8931227d",
+      "topic": "spectral-locality",
+      "path": "1-1",
+      "spec": {
+        "epochs": 12,
+        "hidden": 128,
+        "method": "fft",
+        "window": 16,
+        "weight_decay": 0.001,
+        "learning_rate": 0.002,
+        "train_history": 256
+      },
+      "status": "INCONCLUSIVE",
+      "evaluation": {
+        "scores": {
+          "path": "research/scores/17f6936e44f68d834d9cdf525aad9b46e9dc9f74b53bdafcd1b68af313d1e8cb",
+          "bytes": 81610,
+          "sha256": "17f6936e44f68d834d9cdf525aad9b46e9dc9f74b53bdafcd1b68af313d1e8cb"
+        },
+        "summary": {
+          "n": 254,
+          "red_brier": 0.15697144177201527,
+          "blue_log_loss": 2.9058355826044835,
+          "blue_top1_hits": 14,
+          "blue_top1_rate": 0.05511811023622047
+        },
+        "evidence": "DEVELOPMENT_REPLAY_NOT_FORWARD_OR_PROTECTED_HOLDOUT",
+        "execution": {
+          "history_source": "FRESH_PRIOR_FITS",
+          "resumed_origins": 0,
+          "step_count_scope": "unique_completed_fits;excludes_interrupted_or_recomputed_work",
+          "anchor_weight_digest": "aac7d22f31c72eb01f1c6073b994facd099ead7753c8bc3e2ea6c7d22e6853cb",
+          "seconds_this_attempt": 8.4615,
+          "anchor_optimizer_digest": "0746daf9f88114ce9412cf8d74237a7d94fbcc88f025ea577d012fe168958322",
+          "anchor_mathematical_digest": "a1d3b3cdc62f9fa939145ebb529821bd381c6b9a150080e75b5f89a75ae3d8d8",
+          "all_origin_parameters_updated": true,
+          "committed_origin_and_anchor_steps": 3540,
+          "origin_fits_executed_this_attempt": 294,
+          "anchor_inherited_compatible_parent": false,
+          "gradient_steps_executed_this_attempt": 3540
+        },
+        "protocol_digest": "ad8b2ec1c933317b43e476d3f8dc9474d742303e8481e9c2383ceabe7cc18bf6"
+      },
+      "decision": {
+        "verdict": "INCONCLUSIVE",
+        "evidence": "DEVELOPMENT_REPLAY_NOT_FORWARD_OR_PROTECTED_HOLDOUT",
+        "n_unique": 294,
+        "recent_delta": 0.019298687086940262,
+        "reserve_used": true,
+        "protocol_digest": "ad8b2ec1c933317b43e476d3f8dc9474d742303e8481e9c2383ceabe7cc18bf6",
+        "red_brier_delta": -0.011295075557957241,
+        "random_historical_delta": -0.00582161543381033,
+        "paired_mean_blue_loss_delta": 0.0015404587334964242,
+        "paired_development_interval95": [
+          -0.038864965676960836,
+          0.04400052918889953
+        ]
+      }
+    },
+    {
+      "campaign": "p3-final-validation-2-558d6448",
+      "topic": "calibration-stability",
+      "path": "1",
+      "spec": {
+        "epochs": 12,
+        "hidden": 128,
+        "method": "raw",
+        "window": 16,
+        "weight_decay": 0.0,
+        "learning_rate": 0.002,
+        "train_history": 256
+      },
+      "status": "ACCEPT_BASELINE",
+      "evaluation": {
+        "scores": {
+          "path": "research/scores/1ee25b547c509c0c371d53bce93dbff549b292538122f231c202305322c29a07",
+          "bytes": 81420,
+          "sha256": "1ee25b547c509c0c371d53bce93dbff549b292538122f231c202305322c29a07"
+        },
+        "summary": {
+          "n": 254,
+          "red_brier": 0.16820357122137816,
+          "blue_log_loss": 2.9037841682507066,
+          "blue_top1_hits": 18,
+          "blue_top1_rate": 0.07086614173228346
+        },
+        "evidence": "DEVELOPMENT_REPLAY_NOT_FORWARD_OR_PROTECTED_HOLDOUT",
+        "execution": {
+          "history_source": "SHARED_SCORE_CACHE",
+          "resumed_origins": 294,
+          "step_count_scope": "unique_completed_fits;excludes_interrupted_or_recomputed_work",
+          "anchor_weight_digest": "a5a8b2fa182465fa2f42e347bfdac06524bee1b089ed36564e0165541b4e50db",
+          "seconds_this_attempt": 0.0278,
+          "anchor_optimizer_digest": "69fa1d3e4e79e8b5ffdbca0e7a36c222eb2cf14ceec4bd363250f03ffe7c8426",
+          "anchor_mathematical_digest": "2e7a1aa100a1266af873c39d2f4f8cb78a61a87e1c162674bea5e1790c01a07a",
+          "all_origin_parameters_updated": true,
+          "committed_origin_and_anchor_steps": 3540,
+          "origin_fits_executed_this_attempt": 0,
+          "anchor_inherited_compatible_parent": false,
+          "gradient_steps_executed_this_attempt": 12
+        },
+        "protocol_digest": "ad8b2ec1c933317b43e476d3f8dc9474d742303e8481e9c2383ceabe7cc18bf6"
+      },
+      "decision": {
+        "verdict": "ACCEPT_BASELINE",
+        "protocol_digest": "ad8b2ec1c933317b43e476d3f8dc9474d742303e8481e9c2383ceabe7cc18bf6"
+      }
+    },
+    {
+      "campaign": "p3-final-validation-2-558d6448",
+      "topic": "calibration-stability",
+      "path": "1-1",
+      "spec": {
+        "epochs": 12,
+        "hidden": 128,
+        "method": "newton",
+        "window": 16,
+        "weight_decay": 0.01,
+        "learning_rate": 0.002,
+        "train_history": 256
+      },
+      "status": "ACCEPT_IMPROVEMENT",
+      "evaluation": {
+        "scores": {
+          "path": "research/scores/25c569ceede78967100e62f9d427f55c95acd368f2f59ca36da4c5c2a8c20f75",
+          "bytes": 93923,
+          "sha256": "25c569ceede78967100e62f9d427f55c95acd368f2f59ca36da4c5c2a8c20f75"
+        },
+        "summary": {
+          "n": 254,
+          "red_brier": 0.17743337555874217,
+          "blue_log_loss": 2.7842083717690933,
+          "blue_top1_hits": 19,
+          "blue_top1_rate": 0.07480314960629922
+        },
+        "evidence": "DEVELOPMENT_REPLAY_NOT_FORWARD_OR_PROTECTED_HOLDOUT",
+        "execution": {
+          "history_source": "FRESH_PRIOR_FITS",
+          "resumed_origins": 0,
+          "step_count_scope": "unique_completed_fits;excludes_interrupted_or_recomputed_work",
+          "anchor_weight_digest": "995875f2616946760c89b6b416b8941e16f999f85ecede887558e2cd61fb8397",
+          "seconds_this_attempt": 6.188,
+          "anchor_optimizer_digest": "1516f23255bc8463f03a27d7b6772b4164e5fa3c2cd88278dcaabf34226882b4",
+          "anchor_mathematical_digest": "79c15f05e53ac180d14aed6428bbabbe33fff6028f1b35f7782443def58232cb",
+          "all_origin_parameters_updated": true,
+          "committed_origin_and_anchor_steps": 3540,
+          "origin_fits_executed_this_attempt": 294,
+          "anchor_inherited_compatible_parent": false,
+          "gradient_steps_executed_this_attempt": 3540
+        },
+        "protocol_digest": "ad8b2ec1c933317b43e476d3f8dc9474d742303e8481e9c2383ceabe7cc18bf6"
+      },
+      "decision": {
+        "verdict": "ACCEPT_IMPROVEMENT",
+        "evidence": "DEVELOPMENT_REPLAY_NOT_FORWARD_OR_PROTECTED_HOLDOUT",
+        "n_unique": 254,
+        "recent_delta": -0.157865941463831,
+        "reserve_used": false,
+        "protocol_digest": "ad8b2ec1c933317b43e476d3f8dc9474d742303e8481e9c2383ceabe7cc18bf6",
+        "red_brier_delta": 0.009229804337364029,
+        "random_historical_delta": -0.1103182171581971,
+        "paired_mean_blue_loss_delta": -0.11957579648161318,
+        "paired_development_interval95": [
+          -0.1628438648654467,
+          -0.0701036930962927
+        ]
+      }
+    }
+  ],
+  "compression": [
+    {
+      "campaign": "p3-final-validation-1-8931227d",
+      "path": "1",
+      "array_bytes": 81420,
+      "equivalent_json_bytes": 395883
+    },
+    {
+      "campaign": "p3-final-validation-1-8931227d",
+      "path": "1-1",
+      "array_bytes": 81610,
+      "equivalent_json_bytes": 396738
+    },
+    {
+      "campaign": "p3-final-validation-2-558d6448",
+      "path": "1",
+      "array_bytes": 81420,
+      "equivalent_json_bytes": 395883
+    },
+    {
+      "campaign": "p3-final-validation-2-558d6448",
+      "path": "1-1",
+      "array_bytes": 93923,
+      "equivalent_json_bytes": 395324
+    }
+  ],
+  "cache_reuse": {
+    "history_source": "SHARED_SCORE_CACHE",
+    "resumed_origins": 294,
+    "step_count_scope": "unique_completed_fits;excludes_interrupted_or_recomputed_work",
+    "anchor_weight_digest": "a5a8b2fa182465fa2f42e347bfdac06524bee1b089ed36564e0165541b4e50db",
+    "seconds_this_attempt": 0.0223,
+    "anchor_optimizer_digest": "69fa1d3e4e79e8b5ffdbca0e7a36c222eb2cf14ceec4bd363250f03ffe7c8426",
+    "anchor_mathematical_digest": "2e7a1aa100a1266af873c39d2f4f8cb78a61a87e1c162674bea5e1790c01a07a",
+    "all_origin_parameters_updated": true,
+    "committed_origin_and_anchor_steps": 3540,
+    "origin_fits_executed_this_attempt": 0,
+    "anchor_inherited_compatible_parent": false,
+    "gradient_steps_executed_this_attempt": 12
+  },
+  "priority_probe": {
+    "zero_capacity_blocks_claim": true,
+    "no_attempt_created_while_denied": true,
+    "wait": {
+      "at": "2026-10-29T05:41:45.501171+00:00",
+      "job": "f0555aaa43a6c47c86b114d29a5a180f12e8ec561d6cf39a6dafbb831633b7bd",
+      "reason": "WAITING_DAILY_CAPACITY"
+    },
+    "observed_checkpoint_origins_before_core_arrival": 8,
+    "saved_origins_at_priority_yield": 40,
+    "research_job": "7a201d9b21c47b4ced28211383996f0fdd7b32df3b2bbf22dc73d386c138b448"
+  },
+  "priority_resume": {
+    "history_source": "TASK_CHECKPOINT",
+    "resumed_origins": 40,
+    "step_count_scope": "unique_completed_fits;excludes_interrupted_or_recomputed_work",
+    "anchor_weight_digest": "df479d12e1ce414da8f312a980b912f72543c12ac8de4662e9a05ec613423ae9",
+    "seconds_this_attempt": 12.1775,
+    "anchor_optimizer_digest": "833073620b959305f6b2b59dad96b0d1fe9e3e645eff5d919d359d111802a7f6",
+    "anchor_mathematical_digest": "2e7a1aa100a1266af873c39d2f4f8cb78a61a87e1c162674bea5e1790c01a07a",
+    "all_origin_parameters_updated": true,
+    "committed_origin_and_anchor_steps": 8260,
+    "origin_fits_executed_this_attempt": 254,
+    "anchor_inherited_compatible_parent": false,
+    "gradient_steps_executed_this_attempt": 7140
+  },
+  "gc_probe": {
+    "controlled_expiry_canaries": {
+      "expired": {
+        "path": "cache/p3-probe-expired",
+        "sha256": "d02a69fc87b4b4c6c6070b3eeaf26aad5099fcf11f6d6487d45e594c937fa79d",
+        "bytes": 38912
+      },
+      "rescued": {
+        "path": "cache/p3-probe-rescued",
+        "sha256": "47a6a2f875760dba5cfc7ece7a84d105e502dbdc0b7c7dde1606949e3d68fd94",
+        "bytes": 38912
+      },
+      "pinned": {
+        "path": "cache/p3-probe-pinned",
+        "sha256": "737fc78b1f86bd3107bfd42e637f9618fba25d4640f9443cbd7396015d064236",
+        "bytes": 37888
+      },
+      "quarantine": {
+        "path": "cache/p3-probe-quarantine",
+        "sha256": "35a3291c201855cac03e58625108d15c356c6212681175ae4215602c86b06221",
+        "bytes": 41984
+      }
+    },
+    "preview": {
+      "mode": "DRY_RUN",
+      "protected": 76,
+      "candidates": 3,
+      "deleted": 0,
+      "deleted_bytes": 0,
+      "at": "2026-10-29T05:36:08.380825+00:00"
+    },
+    "mark": {
+      "mode": "APPLY",
+      "protected": 76,
+      "candidates": 3,
+      "deleted": 0,
+      "deleted_bytes": 0,
+      "at": "2026-10-29T05:36:08.394573+00:00",
+      "retired_campaigns": 0
+    },
+    "quarantine_recovery": {
+      "mode": "APPLY",
+      "protected": 76,
+      "candidates": 2,
+      "deleted": 0,
+      "deleted_bytes": 0,
+      "at": "2026-10-29T05:36:08.414860+00:00",
+      "retired_campaigns": 0
+    },
+    "symlink_escape_rejected": true,
+    "shared_snapshot": "7c8b0a1684841e64891124cff7d0f0d83434c3f7aa99a21a2435e7a6c2eaa413",
+    "semantic_receipt_reuse": {
+      "inserted": 0,
+      "duplicate": 2,
+      "source": "56d3d30ead1e360c6d2a9a473038c7359ebd712b9a02e7bb267e4303554e8111",
+      "semantic_receipt_reused": true
+    },
+    "scope": "Actual Next filesystem/DB actions; only generated cache canaries were assigned expired TTLs"
+  },
+  "core_models_unchanged_after_gc": true,
+  "metadata_retirement": {
+    "mode": "APPLY",
+    "protected": 99,
+    "candidates": 0,
+    "deleted": 0,
+    "deleted_bytes": 0,
+    "at": "2026-10-29T05:48:54.119241+00:00",
+    "retired_campaigns": 1
+  },
+  "rollups": [
+    {
+      "topic": "spectral-locality",
+      "campaigns": 1,
+      "nodes": 2,
+      "decisions": 6,
+      "failures": 0,
+      "retired_bytes": 0,
+      "updated_at": "2026-10-29 05:48:54.119482+00:00"
+    }
+  ],
+  "resource_days": [
+    {
+      "day": "2026-10-29",
+      "spent": 1579.3141229999999,
+      "reserved": 0.0,
+      "calls": 8
+    }
+  ],
+  "reservations": [
+    {
+      "lane": "compute",
+      "state": "SETTLED",
+      "cpu_reserved": 240.0,
+      "charged": 0.1489587539981585,
+      "wall_seconds": 0.07447937699907925,
+      "process_cpu_seconds": 0.07291550399999736,
+      "written": 1376356
+    },
+    {
+      "lane": "planning",
+      "state": "SETTLED",
+      "cpu_reserved": 750.0,
+      "charged": 346.47962920498685,
+      "wall_seconds": 69.29592584099737,
+      "process_cpu_seconds": 0.14507835999999985,
+      "written": 17152
+    },
+    {
+      "lane": "compute",
+      "state": "SETTLED",
+      "cpu_reserved": 240.0,
+      "charged": 16.966211038001347,
+      "wall_seconds": 8.483105519000674,
+      "process_cpu_seconds": 15.816782756000002,
+      "written": 3248317
+    },
+    {
+      "lane": "planning",
+      "state": "SETTLED",
+      "cpu_reserved": 0.0,
+      "charged": 0.0,
+      "wall_seconds": 0.004336771002272144,
+      "process_cpu_seconds": 0.0012358700000003608,
+      "written": 0
+    },
+    {
+      "lane": "compute",
+      "state": "SETTLED",
+      "cpu_reserved": 240.0,
+      "charged": 13.284422788012307,
+      "wall_seconds": 6.642211394006154,
+      "process_cpu_seconds": 11.528810443000001,
+      "written": 2996586
+    },
+    {
+      "lane": "planning",
+      "state": "SETTLED",
+      "cpu_reserved": 750.0,
+      "charged": 322.34232201997656,
+      "wall_seconds": 64.46846440399531,
+      "process_cpu_seconds": 1.2785161719999998,
+      "written": 16509
+    },
+    {
+      "lane": "compute",
+      "state": "SETTLED",
+      "cpu_reserved": 240.0,
+      "charged": 17.122178635996534,
+      "wall_seconds": 8.561089317998267,
+      "process_cpu_seconds": 15.095532510999998,
+      "written": 3000745
+    },
+    {
+      "lane": "planning",
+      "state": "SETTLED",
+      "cpu_reserved": 0.0,
+      "charged": 0.0,
+      "wall_seconds": 0.0027833450003527105,
+      "process_cpu_seconds": 0.0009984549999999537,
+      "written": 0
+    },
+    {
+      "lane": "compute",
+      "state": "SETTLED",
+      "cpu_reserved": 240.0,
+      "charged": 0.15570312199997716,
+      "wall_seconds": 0.07785156099998858,
+      "process_cpu_seconds": 0.0871911290000007,
+      "written": 1376356
+    },
+    {
+      "lane": "compute",
+      "state": "SETTLED",
+      "cpu_reserved": 240.0,
+      "charged": 4.049263070017332,
+      "wall_seconds": 2.024631535008666,
+      "process_cpu_seconds": 3.920531692000001,
+      "written": 48521
+    },
+    {
+      "lane": "planning",
+      "state": "SETTLED",
+      "cpu_reserved": 750.0,
+      "charged": 0.01545080500363838,
+      "wall_seconds": 0.003090161000727676,
+      "process_cpu_seconds": 0.000953169000000198,
+      "written": 0
+    },
+    {
+      "lane": "core_compute",
+      "state": "SETTLED",
+      "cpu_reserved": 0.0,
+      "charged": 0.0,
+      "wall_seconds": 0.27472076599951833,
+      "process_cpu_seconds": 0.1829493369999966,
+      "written": 1288923
+    },
+    {
+      "lane": "core_compute",
+      "state": "SETTLED",
+      "cpu_reserved": 0.0,
+      "charged": 0.0,
+      "wall_seconds": 0.04781242000171915,
+      "process_cpu_seconds": 0.06810515200000111,
+      "written": 0
+    },
+    {
+      "lane": "core_compute",
+      "state": "SETTLED",
+      "cpu_reserved": 0.0,
+      "charged": 0.0,
+      "wall_seconds": 0.002447092003421858,
+      "process_cpu_seconds": 0.0010985040000051072,
+      "written": 0
+    },
+    {
+      "lane": "core_compute",
+      "state": "SETTLED",
+      "cpu_reserved": 0.0,
+      "charged": 0.0,
+      "wall_seconds": 0.27357515299809165,
+      "process_cpu_seconds": 0.18472426900000016,
+      "written": 1288923
+    },
+    {
+      "lane": "compute",
+      "state": "SETTLED",
+      "cpu_reserved": 240.0,
+      "charged": 15.397814889991423,
+      "wall_seconds": 7.698907444995712,
+      "process_cpu_seconds": 14.340235460999999,
+      "written": 3091913
+    },
+    {
+      "lane": "planning",
+      "state": "SETTLED",
+      "cpu_reserved": 0.0,
+      "charged": 0.0,
+      "wall_seconds": 0.0040753310022410005,
+      "process_cpu_seconds": 0.0007245700000000355,
+      "written": 0
+    },
+    {
+      "lane": "compute",
+      "state": "SETTLED",
+      "cpu_reserved": 240.0,
+      "charged": 24.47621066001011,
+      "wall_seconds": 12.238105330005055,
+      "process_cpu_seconds": 23.523421820000003,
+      "written": 2985303
+    },
+    {
+      "lane": "planning",
+      "state": "SETTLED",
+      "cpu_reserved": 750.0,
+      "charged": 0.01804300001822412,
+      "wall_seconds": 0.003608600003644824,
+      "process_cpu_seconds": 0.0013189049999997593,
+      "written": 0
+    },
+    {
+      "lane": "compute",
+      "state": "SETTLED",
+      "cpu_reserved": 240.0,
+      "charged": 29.24607557200943,
+      "wall_seconds": 14.623037786004716,
+      "process_cpu_seconds": 28.130658772999993,
+      "written": 3108937
+    },
+    {
+      "lane": "compute",
+      "state": "SETTLED",
+      "cpu_reserved": 240.0,
+      "charged": 0.3203567700111307,
+      "wall_seconds": 0.16017838500556536,
+      "process_cpu_seconds": 0.17471961799999747,
+      "written": 1376356
+    },
+    {
+      "lane": "planning",
+      "state": "SETTLED",
+      "cpu_reserved": 0.0,
+      "charged": 0.0,
+      "wall_seconds": 0.0031890999962342903,
+      "process_cpu_seconds": 0.0011289729999997,
+      "written": 0
+    },
+    {
+      "lane": "planning",
+      "state": "SETTLED",
+      "cpu_reserved": 750.0,
+      "charged": 388.47265856005833,
+      "wall_seconds": 77.69453171201167,
+      "process_cpu_seconds": 0.1611354020000002,
+      "written": 17796
+    },
+    {
+      "lane": "compute",
+      "state": "SETTLED",
+      "cpu_reserved": 240.0,
+      "charged": 12.499536543997237,
+      "wall_seconds": 6.249768271998619,
+      "process_cpu_seconds": 11.401721323999993,
+      "written": 3248317
+    },
+    {
+      "lane": "planning",
+      "state": "SETTLED",
+      "cpu_reserved": 0.0,
+      "charged": 0.0,
+      "wall_seconds": 0.003933888001483865,
+      "process_cpu_seconds": 0.0009615919999999001,
+      "written": 0
+    }
+  ],
+  "policy_changes": [
+    {
+      "policy": {
+        "calls": 0,
+        "capacity": 0
+      },
+      "reason": "Live acceptance: lower ceilings to zero without fabricating usage counters",
+      "created_at": "2026-10-29 05:41:45.424298+00:00"
+    },
+    {
+      "policy": {
+        "calls": 24,
+        "capacity": 7200
+      },
+      "reason": "Live acceptance complete: restore approved daily ceilings with actual counters unchanged",
+      "created_at": "2026-10-29 05:41:45.503538+00:00"
+    }
+  ],
+  "live_source_draws": [
+    {
+      "n": 3520,
+      "latest": "2026123"
+    }
+  ],
+  "p1_state": [
+    {
+      "id": "history-p1",
+      "state": "WAITING_FOR_DATA"
+    },
+    {
+      "id": "p3-priority-history",
+      "state": "PAUSED_CYCLE_BUDGET"
+    }
+  ],
+  "telemetry": {
+    "accounting": "logical image sizes and configured log maxima are conservative; all shared build cache charged to total upper bound",
+    "at": "2026-10-29T05:48:46.041553+00:00",
+    "categories": {
+      "application": 54324230,
+      "backups": 0,
+      "database": 92359171,
+      "environment": 12401104586,
+      "inference": 1359301170,
+      "logs": 110100480,
+      "staging": 502488
+    },
+    "complete": true,
+    "containers": {
+      "dehps-next-inference": {
+        "cpu_ns": 2240056475000,
+        "memory": 11911168,
+        "oom_killed": false,
+        "running": true,
+        "writable_bytes": 12288
+      },
+      "dehps-next-p0p1-api-1": {
+        "cpu_ns": 2233202000,
+        "memory": 180899840,
+        "oom_killed": false,
+        "running": true,
+        "writable_bytes": 20480
+      },
+      "dehps-next-p0p1-database-1": {
+        "cpu_ns": 172875326000,
+        "memory": 181563392,
+        "oom_killed": false,
+        "running": true,
+        "writable_bytes": 20480
+      },
+      "dehps-next-p0p1-planner-1": {
+        "cpu_ns": 3919376000,
+        "memory": 249319424,
+        "oom_killed": false,
+        "running": true,
+        "writable_bytes": 20480
+      },
+      "dehps-next-p0p1-source-1": {
+        "cpu_ns": 1118955000,
+        "memory": 167940096,
+        "oom_killed": false,
+        "running": true,
+        "writable_bytes": 20480
+      },
+      "dehps-next-p0p1-steward-1": {
+        "cpu_ns": 2003849000,
+        "memory": 171556864,
+        "oom_killed": false,
+        "running": true,
+        "writable_bytes": 20480
+      },
+      "dehps-next-p0p1-worker-1": {
+        "cpu_ns": 113767082000,
+        "memory": 276070400,
+        "oom_killed": false,
+        "running": true,
+        "writable_bytes": 20480
+      }
+    },
+    "disk_free": 523377688576,
+    "disk_total": 1005867986944,
+    "image_gc": {
+      "candidates": 0,
+      "deleted_lifetime": 0
+    },
+    "logical_cpus": 22,
+    "memory_available": 27424583680,
+    "memory_total": 32551383040,
+    "owned_upper_bytes": 25088229975,
+    "owner": "dehps-next",
+    "shared_build_cache_upper_bytes": 11069458747
+  },
+  "benchmarks": {
+    "workload": "32 identical causal neural+FFT/ridge/Newton fits on a 512-row existing Next suffix",
+    "container_limits": "6CPU/6GiB; no legacy reads; 120-second launch budget and finite tasks",
+    "results": [
+      {
+        "processes": 1,
+        "threads": 1,
+        "fits": 32,
+        "cold_wall_seconds": 3.702306042003329,
+        "hot_wall_upper_seconds": 1.9405577549914597,
+        "process_cpu_seconds": 2.5997795709999996,
+        "same_configuration_hashes_match": true,
+        "max_probability_difference_from_reference": 0.0
+      },
+      {
+        "processes": 1,
+        "threads": 2,
+        "fits": 32,
+        "cold_wall_seconds": 3.180721786004142,
+        "hot_wall_upper_seconds": 1.6547907530184602,
+        "process_cpu_seconds": 3.1144968660000005,
+        "same_configuration_hashes_match": true,
+        "max_probability_difference_from_reference": 5.134360883743416e-07
+      },
+      {
+        "processes": 1,
+        "threads": 4,
+        "fits": 32,
+        "cold_wall_seconds": 2.988761129003251,
+        "hot_wall_upper_seconds": 1.5338805979990866,
+        "process_cpu_seconds": 4.240241589,
+        "same_configuration_hashes_match": true,
+        "max_probability_difference_from_reference": 5.138225918771555e-07
+      },
+      {
+        "processes": 1,
+        "threads": 8,
+        "fits": 32,
+        "cold_wall_seconds": 3.571734233002644,
+        "hot_wall_upper_seconds": 2.088609150989214,
+        "process_cpu_seconds": 8.180373664,
+        "same_configuration_hashes_match": true,
+        "max_probability_difference_from_reference": 5.147026589311099e-07
+      },
+      {
+        "processes": 2,
+        "threads": 1,
+        "fits": 32,
+        "cold_wall_seconds": 3.404371690005064,
+        "hot_wall_upper_seconds": 1.6380218109916314,
+        "process_cpu_seconds": 3.88779716,
+        "same_configuration_hashes_match": true,
+        "max_probability_difference_from_reference": 0.0
+      },
+      {
+        "processes": 2,
+        "threads": 2,
+        "fits": 32,
+        "cold_wall_seconds": 3.1179187429952435,
+        "hot_wall_upper_seconds": 1.4515618469959009,
+        "process_cpu_seconds": 4.413751189,
+        "same_configuration_hashes_match": true,
+        "max_probability_difference_from_reference": 5.134360883743416e-07
+      },
+      {
+        "processes": 4,
+        "threads": 1,
+        "fits": 32,
+        "cold_wall_seconds": 3.483203996991506,
+        "hot_wall_upper_seconds": 1.3024519682512619,
+        "process_cpu_seconds": 5.69577393,
+        "same_configuration_hashes_match": true,
+        "max_probability_difference_from_reference": 0.0
+      },
+      {
+        "processes": 4,
+        "threads": 2,
+        "fits": 32,
+        "cold_wall_seconds": 3.502273990001413,
+        "hot_wall_upper_seconds": 1.3791287392523373,
+        "process_cpu_seconds": 7.083592143,
+        "same_configuration_hashes_match": true,
+        "max_probability_difference_from_reference": 5.134360883743416e-07
+      }
+    ],
+    "elapsed_seconds": 26.951714367998648,
+    "scope": "calibration only; joint inference telemetry captured during live program acceptance"
+  },
+  "gc_receipts": [
+    {
+      "path": "cache/p3-probe-quarantine",
+      "action": "MARK",
+      "bytes": 41984,
+      "reason": "UNREFERENCED_TTL",
+      "created_at": "2026-10-29 05:36:08.394709+00:00"
+    },
+    {
+      "path": "cache/p3-probe-expired",
+      "action": "MARK",
+      "bytes": 38912,
+      "reason": "UNREFERENCED_TTL",
+      "created_at": "2026-10-29 05:36:08.394709+00:00"
+    },
+    {
+      "path": "cache/p3-probe-rescued",
+      "action": "MARK",
+      "bytes": 38912,
+      "reason": "UNREFERENCED_TTL",
+      "created_at": "2026-10-29 05:36:08.394709+00:00"
+    },
+    {
+      "path": "cache/p3-probe-expired",
+      "action": "DELETE",
+      "bytes": 38912,
+      "reason": "RECHECKED_UNREFERENCED_TTL",
+      "created_at": "2026-10-29 05:37:24.435565+00:00"
+    },
+    {
+      "path": "cache/p3-probe-quarantine",
+      "action": "DELETE",
+      "bytes": 41984,
+      "reason": "RECHECKED_UNREFERENCED_TTL",
+      "created_at": "2026-10-29 05:37:24.435565+00:00"
+    }
+  ],
+  "scope": "Real Next-only runtime acceptance. Cache/image expiry and one retired acceptance campaign use controlled TTL fixtures. No unit tests, legacy writes, forward claims or simulated usage charges."
+}

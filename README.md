@@ -1,6 +1,6 @@
 # DEHPS Next
 
-P0/P1 持续学习内核与 P2 自动研究分支、本地数学智能体。完整设计见
+P0/P1 持续学习、P2 本地数学研究与 P3 常驻调度/资源/GC。完整设计见
 [v1.1 重构方案](docs/architecture/dehps-next-v1.1.md)，本轮边界见
 [P0 契约](docs/architecture/p0-contract.md)。
 
@@ -83,8 +83,8 @@ P1不猜节假日开奖和跨年期号，日程自动同步属于后续工作。
 
 每个任务有租约和递增执行尝试，过期执行不能提交。训练每5个epoch保存两个交替恢复槽，
 含权重、优化器、随机状态和输入摘要；成功提交后才回收本任务恢复文件。
-P1产物目录默认256MiB硬上限，每文件16MiB，并检查剩余磁盘。全宿主机100GiB包络和TTL回收属于P3，
-不能把此处基础限额当成完整容量治理已经完成。
+P3将应用产物限额设为1GiB，每文件16MiB，并预留活跃任务写入空间。
+宿主机100GiB包络、数据库/WAL、镜像和模型缓存上界由独立主机代理计量；详见P3政策。
 
 ## 验证与停止
 
@@ -127,5 +127,29 @@ docker compose run --rm worker research-status --name research-001
 
 [本地模型运行与边界](docs/architecture/p2-math-agent.md)包含完整启动命令、模型身份、资源限制与故障处理。
 [实际 P2b 验收](docs/acceptance/p2b-20261029.md)记录三种数学分支、真实模型调用及中断恢复。
-当前活动达到预算后停止，P1等待新开奖；完整TTL/依赖GC、自动安排后续研究主题、
-受控任意候选代码沙箱与隔离最终验证仍需后续完善，不能将有限方法注册表描述成无限自主发现能力。
+单活动达到预算后停止，由P3常驻程序安排不同问题；P1等待新开奖。
+任意候选代码沙箱与隔离最终验证仍需后续完善，不能将有限方法注册表描述成无限自主发现能力。
+
+## P3 常驻研究与容量管理
+
+先创建 `runtime/host`，将 `deploy/dehps-next-host-agent.service` 安装到用户systemd并启用，
+再使用完整配置启动 `worker planner steward source api inference`。
+主机代理仅处理Next范围；应用没有Docker socket。真实准入、可恢复GC和每日额度默认启用。
+
+```bash
+mkdir -p runtime/host ~/.config/systemd/user
+cp deploy/dehps-next-host-agent.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+docker compose -f compose.yaml -f compose.inference.yaml run --rm worker init
+docker compose -f compose.yaml -f compose.inference.yaml up -d
+systemctl --user enable --now dehps-next-host-agent.service
+docker compose -f compose.yaml -f compose.inference.yaml run --rm worker program-enable \
+  --name autonomous-p3 --interval 1800 --max-daily 3 --max-nodes 3 --planner local
+```
+
+推理模型需按P2文档预先安装。程序每天最多3个主题、24次推理、7200容量秒，冷却和额度跨进程重启保留。
+同一历史复用快照与评分数组；过期研究明细、尝试和镜像按引用、TTL和宽限期回收，正式模型与活跃恢复输入受保护。
+研究问题耗尽等待真实新数据；新开奖导入后自动重启下一组，避免无意义空转。
+`/status`显示程序、额度、预留、回收及宿主机上界。缺少新鲜遥测时明确等待，不能猜测资源足够。
+
+[P3运行政策](docs/architecture/p3-autonomous-lifecycle.md) · [P3实际验收](docs/acceptance/p3-20261029.md)
