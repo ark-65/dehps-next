@@ -6,6 +6,11 @@ x-app: &app
   environment:
     DEHPS_NEXT_RUNTIME: /app/runtime/application
     DEHPS_NEXT_THREADS: "2"
+    OPENBLAS_NUM_THREADS: "2"
+    OMP_NUM_THREADS: "2"
+    MKL_NUM_THREADS: "2"
+    DEHPS_NEXT_RESEARCH_URL: http://next-inference:11434
+    DEHPS_NEXT_RESEARCH_MODEL: qwen3:1.7b
   volumes:
     - ./runtime/application:/app/runtime/application
   networks: [next]
@@ -47,7 +52,12 @@ services:
       options: {max-size: "5m", max-file: "3"}
   worker:
     <<: *app
-    command: [worker]
+    command: [worker, --role, compute]
+  planner:
+    <<: *app
+    command: [worker, --role, planning]
+    mem_limit: 1g
+    cpus: 1
   source:
     <<: *app
     command: [watch-source, --interval, "3600"]

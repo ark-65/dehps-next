@@ -107,7 +107,7 @@ class Research:
             if not c.execute("SELECT pg_try_advisory_xact_lock(740134) AS locked").fetchone()["locked"]:
                 return
             campaigns = c.execute(
-                "SELECT * FROM research_campaigns WHERE status NOT IN ('BUDGET_EXHAUSTED','COMPLETE')"
+                "SELECT * FROM research_campaigns WHERE status NOT IN ('BUDGET_EXHAUSTED','COMPLETE','SUPERSEDED')"
             ).fetchall()
             for campaign in campaigns:
                 if campaign["config"]["code_digest"] != code_identity():
@@ -253,7 +253,7 @@ class Research:
         if campaign["config"]["planner"] == "local":
             from .research_agent import propose
 
-            proposal = propose(campaign, nodes, pulse)
+            proposal = propose(campaign, nodes, pulse, self.db, self.artifacts, job)
             spec.update(proposal["spec"])
             hypothesis = proposal
         elif not siblings:
@@ -292,6 +292,39 @@ class Research:
                 },
             )
             self.db.complete(c, job)
+
+    def stop_campaign(self, campaign_id, reason):
+        if len(reason) < 12:
+            raise DomainError("STOP_REASON_REQUIRED", "Record why this frozen campaign is superseded")
+        with self.db.pool.connection() as c, c.transaction():
+            campaign = c.execute(
+                "SELECT * FROM research_campaigns WHERE id=%s FOR UPDATE", (campaign_id,)
+            ).fetchone()
+            if not campaign:
+                raise DomainError("UNKNOWN_CAMPAIGN", "Campaign does not exist")
+            if c.execute(
+                "SELECT 1 FROM jobs j JOIN research_nodes n ON n.id=j.research_node_id WHERE n.campaign_id=%s AND j.state='RUNNING'",
+                (campaign_id,),
+            ).fetchone():
+                raise DomainError("ACTIVE_CAMPAIGN", "Stop its active worker before superseding")
+            if campaign["status"] == "SUPERSEDED":
+                return {"status": "SUPERSEDED", "id": campaign_id}
+            c.execute(
+                "UPDATE jobs SET state='FAILED',error_code='CAMPAIGN_SUPERSEDED' WHERE research_node_id IN (SELECT id FROM research_nodes WHERE campaign_id=%s) AND state='READY'",
+                (campaign_id,),
+            )
+            c.execute(
+                "UPDATE research_campaigns SET status='SUPERSEDED',updated_at=now() WHERE id=%s",
+                (campaign_id,),
+            )
+            self.decision(
+                c,
+                campaign_id,
+                None,
+                "CAMPAIGN_SUPERSEDED",
+                {"reason": reason, "previous_status": campaign["status"], "facts_preserved": True},
+            )
+        return {"status": "SUPERSEDED", "id": campaign_id, "reason": reason}
 
     def adopt_release(self, loop_id, reason):
         if len(reason) < 12:
