@@ -9,7 +9,7 @@ from .domain import digest
 from .errors import DomainError
 
 
-def make_protocol(size, recent=60, historical=200, seed=1729, minimum=128):
+def make_protocol(size, recent=100, historical=200, seed=1729, minimum=128):
     if size <= minimum + recent or not 4 <= recent <= 120 or not 4 <= historical <= 400:
         raise DomainError("RESEARCH_DATA_BUDGET", "Insufficient history or invalid validation budget")
     rng = random.Random(seed)
@@ -24,7 +24,9 @@ def make_protocol(size, recent=60, historical=200, seed=1729, minimum=128):
     remaining = [i for i in eligible if i not in set(origins)]
     reserve = sorted(rng.sample(remaining, min(40, len(remaining))))
     protocol = {
+        "version": "recent100-tail10-random-v2",
         "recent": recent_origins,
+        "recent10": recent_origins[-10:],
         "random_historical": sorted(sampled),
         "origins": origins,
         "reserve": reserve,
@@ -72,9 +74,14 @@ def review(parent, child, protocol):
     p = {r["origin"]: r for r in parent}
     c = {r["origin"]: r for r in child}
     expected = set(protocol["origins"] + protocol["reserve"])
-    if set(p) != expected or set(c) != expected:
+    primary = set(protocol["origins"])
+    if (
+        not expected.issuperset(set(p))
+        or not expected.issuperset(set(c))
+        or not primary.issubset(set(p) & set(c))
+    ):
         raise DomainError("VALIDATION_LIST_CHANGED", "Parent and child must use the same frozen origin list")
-    for origin in expected:
+    for origin in set(p) & set(c):
         if (
             p[origin]["issue"] != c[origin]["issue"]
             or p[origin]["training_through"] != c[origin]["training_through"]
@@ -84,8 +91,16 @@ def review(parent, child, protocol):
     historical = float(
         np.mean([c[i]["blue_log_loss"] - p[i]["blue_log_loss"] for i in protocol["random_historical"]])
     )
+    tail = float(
+        np.mean(
+            [
+                c[i]["blue_log_loss"] - p[i]["blue_log_loss"]
+                for i in protocol.get("recent10", protocol["recent"][-10:])
+            ]
+        )
+    )
     result = {}
-    for use_reserve in (False, True):
+    for use_reserve in (False, True) if expected.issubset(set(p) & set(c)) else (False,):
         origins = sorted(expected if use_reserve else protocol["origins"])
         delta = [c[i]["blue_log_loss"] - p[i]["blue_log_loss"] for i in origins]
         red_delta = float(np.mean([c[i]["red_brier"] - p[i]["red_brier"] for i in origins]))
@@ -97,6 +112,7 @@ def review(parent, child, protocol):
             upper < -margin
             and recent < margin
             and historical < margin
+            and tail <= margin
             and red_delta <= protocol["red_brier_tolerance"]
         ):
             verdict = "ACCEPT_IMPROVEMENT"
@@ -107,6 +123,7 @@ def review(parent, child, protocol):
             "paired_mean_blue_loss_delta": float(np.mean(delta)),
             "paired_development_interval95": [lower, upper],
             "recent_delta": recent,
+            "recent10_delta": tail,
             "random_historical_delta": historical,
             "red_brier_delta": red_delta,
             "n_unique": len(origins),

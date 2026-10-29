@@ -14,3 +14,8 @@ Owner instruction, 2026-10-29. Applies to all future work in this repository.
 - Ordinary in-policy branch exploration, rollback, pruning and direction changes are autonomous.
 - Keep secrets, raw datasets, model files and runtime caches out of Git. Commit only small intended reports.
 
+
+- Keep research and historical regression running between draws within accepted budgets. Do not use waiting for a new draw as the default research clock.
+- Official mail forecasts may only seal during the registered draw day's Shanghai 16:59–17:00 window. `report-prepare` never bypasses this gate.
+- Require frozen recent100, nested recent10 and random historical regression; preserve failed branches, finite extensions and restored parent hashes. Replay remains development evidence, not forward proof.
+- Preserve early acceptance predictions and their exclusions; never silently replace immutable predictions or count them as official mail recommendations.

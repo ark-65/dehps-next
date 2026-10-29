@@ -131,6 +131,18 @@ class Resources:
             ).fetchone()["closing"]
         lane = "planning" if job["kind"] == "RESEARCH_PLAN" else "compute"
         wall, cpu, write = (150, 5, 4 * 1024**2) if lane == "planning" else (120, 2, 32 * 1024**2)
+        if lane == "planning" and not closing:
+            from .research_agent import use_local_model
+
+            campaign = c.execute(
+                "SELECT r.* FROM research_campaigns r JOIN research_nodes n ON n.campaign_id=r.id WHERE n.id=%s",
+                (job["research_node_id"],),
+            ).fetchone()
+            nodes = c.execute(
+                "SELECT id FROM research_nodes WHERE campaign_id=%s", (campaign["id"],)
+            ).fetchall()
+            if campaign["config"]["planner"] != "local" or not use_local_model(self.db, campaign, nodes):
+                wall, cpu = 30, 1
         if closing:
             wall, cpu, write = 5, 1, 64 * 1024
         if not research:
@@ -165,8 +177,8 @@ class Resources:
         ).fetchone()["n"]
         if research and not closing and spent["spent"] + active + wall * cpu > policy["capacity"]:
             reason = reason or "WAITING_DAILY_CAPACITY"
-        if research and lane == "planning" and not closing and spent["calls"] + 2 > policy["calls"]:
-            reason = reason or "WAITING_DAILY_MODEL_CALLS"
+        # Planning can use the trained direction-value network when LLM calls are exhausted.
+        # Every real LLM call still passes the atomic model_call counter.
         pending = c.execute(
             "SELECT coalesce(sum(greatest(0,write_reserved-written)),0) AS n FROM resource_reservations WHERE state='ACTIVE'"
         ).fetchone()["n"]

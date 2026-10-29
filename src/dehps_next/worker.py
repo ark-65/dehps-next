@@ -115,7 +115,10 @@ class Worker:
                     self.db.defer(
                         job,
                         code,
-                        300 if code in ("LOCAL_INFERENCE_UNAVAILABLE", "LOCAL_MODEL_MISSING") else 15,
+                        300
+                        if code in ("LOCAL_INFERENCE_UNAVAILABLE", "LOCAL_MODEL_MISSING")
+                        and job["kind"] != "RESEARCH_PLAN"
+                        else 15,
                     )
                 else:
                     self.db.fail(job, code)

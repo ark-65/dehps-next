@@ -34,17 +34,29 @@ class Steward:
         self.db, self.artifacts = db, artifacts
         self.resources = Resources(db)
 
-    def enable(self, name, *, interval=1800, max_daily=3, max_nodes=3, planner="local"):
+    def enable(self, name, *, interval=30, max_daily=12, max_nodes=8, planner="local", seed_program=None):
         if (
             not name
             or len(name) > 40
             or not 10 <= interval <= 86400
-            or not 1 <= max_daily <= 3
-            or not 2 <= max_nodes <= 4
+            or not 1 <= max_daily <= 12
+            or not 2 <= max_nodes <= 8
             or planner not in ("rules", "local")
         ):
             raise DomainError("PROGRAM_POLICY", "Invalid bounded program policy")
+        seed = None
+        if seed_program:
+            from .research_compute import validate_spec
+
+            source = self.db.rows("SELECT champion_spec FROM research_programs WHERE id=%s", (seed_program,))
+            if not source or not source[0]["champion_spec"]:
+                raise DomainError(
+                    "PROGRAM_SEED_MISSING", "Seed program must have a registered selected recipe"
+                )
+            seed = validate_spec(source[0]["champion_spec"])
         config = {
+            "seed_program": seed_program,
+            "seed_spec_digest": digest(seed) if seed else None,
             "interval": interval,
             "max_daily": max_daily,
             "max_nodes": max_nodes,
@@ -52,14 +64,15 @@ class Steward:
             "code_digest": code_identity(),
             "topics": TOPICS,
             "scope": "DEVELOPMENT_ONLY",
+            "search_rounds": True,
         }
         with self.db.pool.connection() as c:
             old = c.execute("SELECT config FROM research_programs WHERE id=%s", (name,)).fetchone()
             if old and old["config"] != config:
                 raise DomainError("PROGRAM_POLICY_CONFLICT", "Program policy cannot change silently")
             c.execute(
-                "INSERT INTO research_programs(id,config) VALUES(%s,%s) ON CONFLICT DO NOTHING",
-                (name, Jsonb(config)),
+                "INSERT INTO research_programs(id,config,champion_spec) VALUES(%s,%s,%s) ON CONFLICT DO NOTHING",
+                (name, Jsonb(config), Jsonb(seed) if seed else None),
             )
         return {"id": name, "config": config}
 
@@ -80,8 +93,14 @@ class Steward:
             old = p["config"]["code_digest"]
             completed = []
             for topic in p["config"]["topics"]:
-                if digest([old, p["last_dataset"], topic["name"]]) in p["completed"]:
-                    completed.append(digest([code_identity(), p["last_dataset"], topic["name"]]))
+                suffixes = (
+                    [[topic["name"], round_number] for round_number in range(p["generation"] + 1)]
+                    if p["config"].get("search_rounds")
+                    else [[topic["name"]]]
+                )
+                for suffix in suffixes:
+                    if digest([old, p["last_dataset"], *suffix]) in p["completed"]:
+                        completed.append(digest([code_identity(), p["last_dataset"], *suffix]))
             config = {**p["config"], "code_digest": code_identity()}
             c.execute(
                 "INSERT INTO program_release_adoptions(program_id,old_digest,new_digest,reason) VALUES(%s,%s,%s,%s)",
@@ -147,18 +166,13 @@ class Steward:
             return "WAITING_DAILY_BUDGET", "Campaign count resets at Asia/Shanghai midnight"
         today = c.execute("SELECT * FROM resource_days WHERE day=%s", (day,)).fetchone()
         policy = Resources.policy(c)
-        if (
-            (
-                today
-                and (
-                    today["spent"] + today["reserved"] + 240 > policy["capacity"]
-                    or today["calls"] + 2 > policy["calls"]
-                )
+        if (today and (today["spent"] + today["reserved"] + 240 > policy["capacity"])) or policy[
+            "capacity"
+        ] < 240:
+            return (
+                "WAITING_DAILY_BUDGET",
+                "Capacity seconds exhausted; learned direction search does not require another LLM call",
             )
-            or policy["capacity"] < 240
-            or policy["calls"] < 2
-        ):
-            return "WAITING_DAILY_BUDGET", "Capacity seconds or local model-call allowance exhausted"
         try:
             reason = self.resources.pressure()
         except DomainError as exc:
@@ -167,20 +181,33 @@ class Steward:
             return "WAITING_RESOURCES", reason
         dataset = DataService(self.db, self.artifacts).research_snapshot(c)
         completed = p["completed"] if dataset["id"] == p["last_dataset"] else []
-        for topic in config["topics"]:
-            identity = digest([config["code_digest"], dataset["id"], topic["name"]])
-            if (
-                identity not in completed
-                and not c.execute(
-                    "SELECT 1 FROM research_campaigns WHERE program_id=%s AND identity=%s",
-                    (p["id"], identity),
-                ).fetchone()
-            ):
+        topics = config["topics"]
+        ordered = topics[p["generation"] % len(topics) :] + topics[: p["generation"] % len(topics)]
+        identity = None
+        for topic in ordered:
+            if config.get("search_rounds"):
+                from .research_search import novel_specs
+
+                if not novel_specs(self.db, dataset["id"], config["code_digest"], topic):
+                    continue
+            for round_number in range(p["generation"] + 1) if config.get("search_rounds") else [None]:
+                suffix = [topic["name"], round_number] if round_number is not None else [topic["name"]]
+                candidate_identity = digest([config["code_digest"], dataset["id"], *suffix])
+                if (
+                    candidate_identity not in completed
+                    and not c.execute(
+                        "SELECT 1 FROM research_campaigns WHERE program_id=%s AND identity=%s",
+                        (p["id"], candidate_identity),
+                    ).fetchone()
+                ):
+                    identity = candidate_identity
+                    break
+            if identity:
                 break
-        else:
+        if identity is None:
             return (
                 "WAITING_NEW_DATA",
-                "All registered questions for this snapshot exhausted; no repeated roots",
+                "Finite registered recipe space exhausted; no repeated finished recipes",
             )
         generation = p["generation"] + 1
         name = f"{p['id']}-{generation}-{identity[:8]}"

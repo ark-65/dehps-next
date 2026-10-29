@@ -288,3 +288,25 @@ def propose(campaign, nodes, pulse, db, artifacts, job):
         "inference": [proposal_call, selection_call],
         "direction_value_model": policy,
     }
+
+
+def use_local_model(db, campaign, nodes):
+    """Reason at root and after three more observations; never stall compute on call allowance."""
+    from .domain import now
+    from .resources import ZONE, Resources
+
+    if db.rows(
+        "SELECT 1 FROM research_model_calls WHERE state='FAILED' AND created_at>now()-interval '5 minutes' LIMIT 1"
+    ):
+        return False
+    used = db.rows("SELECT count(*) AS n FROM research_model_calls WHERE campaign_id=%s", (campaign["id"],))[
+        0
+    ]["n"]
+    today = db.rows("SELECT calls FROM resource_days WHERE day=%s", (now().astimezone(ZONE).date(),))
+    with db.pool.connection() as c:
+        allowance = Resources.policy(c)["calls"]
+    return (
+        (len(nodes) == 1 or len(nodes) % 3 == 1)
+        and used + 2 <= campaign["config"]["max_model_calls"]
+        and (today[0]["calls"] if today else 0) + 2 <= allowance
+    )

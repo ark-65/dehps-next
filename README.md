@@ -105,14 +105,14 @@ docker compose run --rm worker research-create --name research-001 --planner rul
 docker compose run --rm worker research-status --name research-001
 ```
 
-研究快照只来自 Next 已导入的数据。首次冻结最近60期、十个时间分层随机抽取200期及40个备用期，
-重叠去重；历史每个原点均从当时可用的前缀重新训练，当前父模型仅供最新锚点继承。
+研究快照只来自 Next 已导入的数据。当前默认冻结最近100期（最近10期另列守卫）、十个时间分层随机抽取200期及40个备用期，
+重叠去重；历史每个原点均从当时可用的前缀重新训练，当前父模型仅供研究恢复锚点继承；发布锚点按与历史回归一致的独立训练流程生成。
 同清单比较蓝球对数损失，并约束红球 Brier 分数；配对区块 bootstrap 仅作为开发期证据。
 不确定时使用一次预定有限复核，仍不确定则保留父节点。
 
 分支经过现有租约队列执行，保存配方、来源、模型/优化器/随机状态、分数、剪枝与恢复记录。
 规则规划器用于先验收执行链；达到节点预算即停止，不自动无限开新主题。
-研究节点的接受仅变更研究指针，不直接替换 P1 的正式预测模型。
+研究节点的接受先变更研究指针；通过独立发布守卫后，才可在16:59–17:00选为当期邮件预测。
 发布代码改变会阻止旧活动任务；兼容性审查后可用 `adopt-release --loop NAME --reason AUDIT_REASON`
 登记 P1 循环兼容升级。研究活动保持冻结代码身份，不提供静默升级。
 
@@ -144,12 +144,12 @@ docker compose -f compose.yaml -f compose.inference.yaml run --rm worker init
 docker compose -f compose.yaml -f compose.inference.yaml up -d
 systemctl --user enable --now dehps-next-host-agent.service
 docker compose -f compose.yaml -f compose.inference.yaml run --rm worker program-enable \
-  --name autonomous-p3 --interval 1800 --max-daily 3 --max-nodes 3 --planner local
+  --name autonomous-v2 --interval 30 --max-daily 12 --max-nodes 8 --planner local
 ```
 
-推理模型需按P2文档预先安装。程序每天最多3个主题、24次推理、7200容量秒，冷却和额度跨进程重启保留。
+推理模型需按P2文档预先安装。程序每天最多12个活动、每活动8节点，24次推理和7200容量秒的总额度保持不变，冷却和额度跨进程重启保留。
 同一历史复用快照与评分数组；过期研究明细、尝试和镜像按引用、TTL和宽限期回收，正式模型与活跃恢复输入受保护。
-研究问题耗尽等待真实新数据；新开奖导入后自动重启下一组，避免无意义空转。
+同一数据继续探索尚未尝试的有限配方；推理额度不足时由已训练的方向价值网络选择新方向。只有配方空间或算力预算耗尽才等待。
 `/status`显示程序、额度、预留、回收及宿主机上界。缺少新鲜遥测时明确等待，不能猜测资源足够。
 
 [P3运行政策](docs/architecture/p3-autonomous-lifecycle.md) · [P3实际验收](docs/acceptance/p3-20261029.md)
@@ -160,8 +160,8 @@ docker compose -f compose.yaml -f compose.inference.yaml run --rm worker program
 `source`每15分钟直接同步福彩官方结果到Next独立数据库，不依赖旧库继续更新，不调用旧更新脚本。
 历史已授权导入3520期，旧库来源标签保留；重复官方核对不会改写原始事实或重复存整份回执。
 
-`reporter`常驻服务每30秒检查上海时区日程：开奖日16:30准备、17:00发送红球Top100/唯一蓝球Top1，
-官方完整结果入库并结算后发送复盘。相同收件人/期号/报告类型有持久去重，重启不会重复发送。
+`reporter`常驻服务每30秒检查上海时区日程：持续训练并执行近100期、最近10期与随机历史回归；开奖日16:59–17:00才封存、17:00发送红球Top100/唯一蓝球Top1，
+无候选通过守卫则发送未通过状态，不能用提前验收记录替代；官方完整结果入库并结算后发送复盘。相同收件人/期号/报告类型有持久去重，重启不会重复发送。
 SMTP明确接收才记SENT；可能送达但回执丢失记UNKNOWN，不盲目重发。旧系统服务与定时任务保持不动。
 
 将Next专用SMTP配置放入0600的`.mail.env`：`DEHPS_NEXT_SMTP_HOST`、`DEHPS_NEXT_SMTP_PORT`、
@@ -174,4 +174,4 @@ docker compose -f compose.yaml -f compose.inference.yaml up -d source reporter w
 
 首次官方核实完整结果的时间另存为不可变记录，使开奖后复盘不用等到日末；不覆盖旧日期型可用时间。
 已核实日历覆盖2026-10-05至2026-12-31；跨年、过期日程或数据断档明确提醒，不猜期号、不补造历史预测。
-[邮件与迁移验收](docs/acceptance/mail-20261029.md)记录实际SMTP接收及首份真实开奖前封存。
+[邮件与迁移验收](docs/acceptance/mail-20261029.md)记录实际SMTP接收及提前验收封存，已由新的[延后封存与回归政策](docs/architecture/final-seal-regression.md)排除出正式邮件统计。

@@ -163,20 +163,24 @@ def predict(model_bytes, snapshot_bytes, recipe):
         "blue_top1": int(np.argmax(blue)) + 1,
         "ranking_score": "sum_of_marginal_log_odds_not_joint_probability",
     }
+    return result, historical_baseline(rows, recipe.seed)
+
+
+def historical_baseline(rows, seed=1729):
     counts = np.ones(16, dtype=np.float64)
     for row in rows:
         counts[row["blue"] - 1] += 1
     probabilities = (counts / counts.sum()).tolist()
     red_counts = (vectors(rows)[:, :33].sum(axis=0) + 1) / (len(rows) + 2)
-    rng = random.Random(recipe.seed)
+    rng = random.Random(seed)
     random_red = set()
     while len(random_red) < 100:
         random_red.add(tuple(sorted(rng.sample(range(1, 34), 6))))
-    return result, {
+    return {
         "blue_top1": int(np.argmax(probabilities)) + 1,
         "blue_probabilities": probabilities,
         "red_top100": top_red_combinations(red_counts.tolist()),
         "random_red_top100": [list(c) for c in sorted(random_red)],
-        "random_red_seed": recipe.seed,
+        "random_red_seed": seed,
         "recipe": "past-frequency+Laplace(1)",
     }

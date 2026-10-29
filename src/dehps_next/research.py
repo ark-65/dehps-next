@@ -47,7 +47,7 @@ class Research:
         *,
         planner="rules",
         max_nodes=3,
-        recent=60,
+        recent=100,
         historical=200,
         root_spec=None,
         topic=None,
@@ -200,7 +200,11 @@ class Research:
             )
             self.db.checkpoint(job, ref)
 
-        scores, anchor_bytes, execution = compute_node(
+        # Root prepares the reserve once; children spend the extra fits only after uncertainty.
+        include_reserve = not parent or (
+            saved is not None and len(saved["rows"]) > len(node["protocol"]["origins"])
+        )
+        scores, anchor_bytes, publication_bytes, execution = compute_node(
             snapshot,
             node["spec"],
             node["protocol"],
@@ -209,24 +213,67 @@ class Research:
             saved=saved,
             initial=initial,
             seconds=node["config"]["node_seconds"],
+            include_reserve=include_reserve,
         )
+        parent_scores = (
+            decode(self.artifacts.read(parent[0]["evaluation"]["scores"]))["rows"] if parent else None
+        )
+        verdict = (
+            review(parent_scores, scores, node["protocol"])
+            if parent
+            else {"verdict": "ACCEPT_BASELINE", "protocol_digest": node["protocol"]["digest"]}
+        )
+        extra = bool(
+            parent
+            and verdict["verdict"] != "PRUNE_REGRESSION"
+            and not include_reserve
+            and len(parent_scores) == len(node["protocol"]["origins"]) + len(node["protocol"]["reserve"])
+        )
+        if extra:
+            prior_execution = execution
+            scores, anchor_bytes, publication_bytes, execution = compute_node(
+                snapshot,
+                node["spec"],
+                node["protocol"],
+                pulse,
+                checkpoint,
+                saved={
+                    "identity": digest([node["spec"], node["protocol"]["digest"], snapshot["cutoff"]]),
+                    "rows": scores,
+                },
+                initial=initial,
+                seconds=node["config"]["node_seconds"],
+                include_reserve=True,
+            )
+            execution["resumed_origins"] = prior_execution["resumed_origins"]
+            execution["origin_fits_executed_this_attempt"] += prior_execution[
+                "origin_fits_executed_this_attempt"
+            ]
+            execution["gradient_steps_executed_this_attempt"] += prior_execution[
+                "gradient_steps_executed_this_attempt"
+            ]
+            execution["seconds_this_attempt"] += prior_execution["seconds_this_attempt"]
+            verdict = review(parent_scores, scores, node["protocol"])
+        execution["finite_reserve_extension"] = extra
+        execution["reserve_fits_available"] = sum(r["origin"] in node["protocol"]["reserve"] for r in scores)
         execution["history_source"] = (
             "TASK_CHECKPOINT" if job["checkpoint"] else "SHARED_SCORE_CACHE" if cached else "FRESH_PRIOR_FITS"
         )
         score_ref = self.artifacts.write(encode(scores), category="research/scores")
         anchor_ref = self.artifacts.write(anchor_bytes, category="research/anchors")
+        publication_ref = self.artifacts.write(publication_bytes, category="research/anchors")
         evaluation = {
             "scores": score_ref,
+            "publication_anchor": publication_ref,
+            "publication_training": "fresh_prior_fit_matching_every_historical_origin",
             "summary": summary(scores, node["protocol"]["origins"]),
+            "recent100": summary(scores, node["protocol"]["recent"]),
+            "recent10": summary(scores, node["protocol"].get("recent10", node["protocol"]["recent"][-10:])),
+            "random_historical": summary(scores, node["protocol"]["random_historical"]),
             "protocol_digest": node["protocol"]["digest"],
             "execution": execution,
             "evidence": node["protocol"]["evidence"],
         }
-        if parent:
-            parent_scores = decode(self.artifacts.read(parent[0]["evaluation"]["scores"]))["rows"]
-            verdict = review(parent_scores, scores, node["protocol"])
-        else:
-            verdict = {"verdict": "ACCEPT_BASELINE", "protocol_digest": node["protocol"]["digest"]}
         pulse()
         with self.db.pool.connection() as c, c.transaction():
             self.db.fence(c, job)
@@ -292,10 +339,13 @@ class Research:
         siblings = [n for n in nodes if n["parent_id"] == selected["id"]]
         spec = dict(selected["spec"])
         if campaign["config"]["planner"] == "local":
-            from .research_agent import propose
+            from .research_agent import propose, use_local_model
+            from .research_search import propose_adaptive
 
             try:
-                proposal = propose(campaign, nodes, pulse, self.db, self.artifacts, job)
+                proposal = (propose if use_local_model(self.db, campaign, nodes) else propose_adaptive)(
+                    campaign, nodes, pulse, self.db, self.artifacts, job
+                )
             except DomainError as exc:
                 if exc.code != "SEARCH_SPACE_EXHAUSTED":
                     raise
@@ -323,13 +373,18 @@ class Research:
                 "hypothesis": "A more aggressive learning rate may improve adaptation",
                 "falsification": "Paired recent and random historical blue loss confirms regression",
             }
-        else:
+        elif len(siblings) == 1:
             spec["learning_rate"], spec["weight_decay"] = 0.0005, 0.01
             hypothesis = {
                 "source": "BOUNDED_RULE_PLANNER",
                 "hypothesis": "Lower learning rate and shrinkage may reduce overfit",
                 "falsification": "Same frozen validation list shows no reliable improvement",
             }
+        else:
+            from .research_search import propose_adaptive
+
+            hypothesis = propose_adaptive(campaign, nodes, pulse, self.db, self.artifacts, job)
+            spec.update(hypothesis["spec"])
         validate_spec(spec)
         if any(n["spec"] == spec for n in nodes):
             raise DomainError("DUPLICATE_RESEARCH_DIRECTION", "Planner repeated a completed direction")
