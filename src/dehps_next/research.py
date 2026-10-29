@@ -70,7 +70,7 @@ class Research:
             "node_seconds": 600,
             "recent": recent,
             "historical": historical,
-            "max_model_calls": 8,
+            "inference_policy": "LOCAL_TOKEN_OBSERVATION_ONLY",
             "purpose": "DEVELOPMENT_RESEARCH_NOT_FORMAL_PREDICTION",
         }
         with nullcontext(connection) if connection else self.db.pool.connection() as c, c.transaction():
@@ -133,7 +133,7 @@ class Research:
             if not c.execute("SELECT pg_try_advisory_xact_lock(740134) AS locked").fetchone()["locked"]:
                 return
             campaigns = c.execute(
-                "SELECT * FROM research_campaigns WHERE status NOT IN ('BUDGET_EXHAUSTED','COMPLETE','SUPERSEDED','SEARCH_EXHAUSTED') AND status NOT LIKE 'BLOCKED_%%'"
+                "SELECT * FROM research_campaigns WHERE status NOT IN ('BATCH_COMPLETE','BUDGET_EXHAUSTED','COMPLETE','SUPERSEDED','SEARCH_EXHAUSTED') AND status NOT LIKE 'BLOCKED_%%'"
             ).fetchall()
             for campaign in campaigns:
                 if campaign["config"]["code_digest"] != code_identity():
@@ -370,12 +370,10 @@ class Research:
             with self.db.pool.connection() as c, c.transaction():
                 self.db.fence(c, job)
                 c.execute(
-                    "UPDATE research_campaigns SET status='BUDGET_EXHAUSTED',updated_at=now() WHERE id=%s",
+                    "UPDATE research_campaigns SET status='BATCH_COMPLETE',updated_at=now() WHERE id=%s",
                     (campaign["id"],),
                 )
-                self.decision(
-                    c, campaign["id"], context["id"], "NODE_BUDGET_EXHAUSTED", {"nodes": len(nodes)}
-                )
+                self.decision(c, campaign["id"], context["id"], "BATCH_COMPLETE", {"nodes": len(nodes)})
                 self.db.complete(c, job)
             return
         selected = next(n for n in nodes if n["id"] == campaign["selected_node"])
@@ -392,21 +390,16 @@ class Research:
             except DomainError as exc:
                 if exc.code != "SEARCH_SPACE_EXHAUSTED":
                     raise
-                with self.db.pool.connection() as c, c.transaction():
-                    self.db.fence(c, job)
-                    c.execute(
-                        "UPDATE research_campaigns SET status='SEARCH_EXHAUSTED',updated_at=now() WHERE id=%s",
-                        (campaign["id"],),
+                try:
+                    proposal = propose_adaptive(campaign, nodes, pulse, self.db, self.artifacts, job)
+                    proposal["local_review"] = (
+                        "Local proposals repeated tried recipes; choose a novel executable direction"
                     )
-                    self.decision(
-                        c,
-                        campaign["id"],
-                        context["id"],
-                        "SEARCH_SPACE_EXHAUSTED",
-                        {"reason": "No novel accepted recipe; move to next bounded question"},
-                    )
-                    self.db.complete(c, job)
-                return
+                except DomainError as exhausted:
+                    if exhausted.code != "SEARCH_SPACE_EXHAUSTED":
+                        raise
+                    self.exhaust(campaign, context, job)
+                    return
             spec.update(proposal["spec"])
             hypothesis = proposal
         elif not siblings:
@@ -448,6 +441,22 @@ class Research:
                     "parent_anchor": selected["anchor"],
                     "hypothesis": hypothesis,
                 },
+            )
+            self.db.complete(c, job)
+
+    def exhaust(self, campaign, context, job):
+        with self.db.pool.connection() as c, c.transaction():
+            self.db.fence(c, job)
+            c.execute(
+                "UPDATE research_campaigns SET status='SEARCH_EXHAUSTED',updated_at=now() WHERE id=%s",
+                (campaign["id"],),
+            )
+            self.decision(
+                c,
+                campaign["id"],
+                context["id"],
+                "SEARCH_SPACE_EXHAUSTED",
+                {"reason": "Local hypotheses and registered adaptive curricula contain no novel recipe"},
             )
             self.db.complete(c, job)
 

@@ -172,7 +172,8 @@ class Lifecycle:
         # Retain recipe exclusions for the newest eight data/numerics pairs; active data stay rooted.
         c.execute("""DELETE FROM research_recipe_memory m WHERE (dataset_id,numeric_digest) NOT IN
             (SELECT dataset_id,numeric_digest FROM research_recipe_memory GROUP BY dataset_id,numeric_digest ORDER BY max(last_seen_at) DESC LIMIT 8)
-            AND NOT EXISTS(SELECT 1 FROM research_campaigns r WHERE r.dataset_id=m.dataset_id AND r.status NOT IN ('BUDGET_EXHAUSTED','COMPLETE','SUPERSEDED','SEARCH_EXHAUSTED') AND r.status NOT LIKE 'BLOCKED_%%')""")
+            AND NOT EXISTS(SELECT 1 FROM research_campaigns r WHERE r.dataset_id=m.dataset_id AND r.status NOT IN ('BATCH_COMPLETE','BUDGET_EXHAUSTED','COMPLETE','SUPERSEDED','SEARCH_EXHAUSTED') AND r.status NOT LIKE 'BLOCKED_%%')""")
+        c.execute("DELETE FROM local_token_days WHERE day<current_date-32")
         # Preserve lifetime counts while retaining only a bounded recent accounting ledger.
         old = c.execute(
             "DELETE FROM resource_days WHERE day<current_date-32 RETURNING spent,calls"

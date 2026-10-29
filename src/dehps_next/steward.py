@@ -8,7 +8,7 @@ from .errors import DomainError
 from .lifecycle import Lifecycle
 from .release import code_identity
 from .research import Research
-from .resources import COMPUTE_WALL, TERMINAL, TRAINING_CPUS, ZONE, Resources
+from .resources import TERMINAL, ZONE, Resources
 
 TOPICS = [
     {
@@ -195,15 +195,6 @@ class Steward:
             return "COOLDOWN", p["next_due"].isoformat()
         if config["max_daily"] and p["launch_day"] == day and p["launched_today"] >= config["max_daily"]:
             return "WAITING_DAILY_BUDGET", "Campaign count resets at Asia/Shanghai midnight"
-        today = c.execute("SELECT * FROM resource_days WHERE day=%s", (day,)).fetchone()
-        policy = Resources.policy(c)
-        if (
-            today and (today["spent"] + today["reserved"] + COMPUTE_WALL * TRAINING_CPUS > policy["capacity"])
-        ) or policy["capacity"] < COMPUTE_WALL * TRAINING_CPUS:
-            return (
-                "WAITING_DAILY_BUDGET",
-                "Capacity seconds exhausted; learned direction search does not require another LLM call",
-            )
         try:
             reason = self.resources.pressure()
         except DomainError as exc:
@@ -263,6 +254,9 @@ class Steward:
         with self.db.pool.connection() as c, c.transaction():
             c.execute("SELECT pg_advisory_xact_lock(740140)")
             self.resources.reap(c)
+            from .local_usage import reconcile
+
+            reconcile(c)
         last = self.db.rows("SELECT payload FROM maintenance_state WHERE id=1")
         if not last or (now() - timestamp(last[0]["payload"]["at"])).total_seconds() >= 30:
             preview = Lifecycle(self.db, self.artifacts).collect(apply=False)

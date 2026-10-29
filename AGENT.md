@@ -24,3 +24,5 @@ Owner instruction, 2026-10-29. Applies to all future work in this repository.
 - Controller-only upgrades must retain numerically equivalent recipe exclusions and reuse audited historical scores; never count cached fits as newly executed training.
 
 - Latest owner allocation 2026-10-29: training8 CPU, local inference4 CPU, planner1 CPU; 691200 capacity-seconds/day, 24 model calls/day. Preserve prior counters and formal forecast/mail timing. Keep process threads distinct from frozen training threads; complete active campaigns before changing thread configuration.
+
+- Latest owner policy 2026-10-29: local inference has no consumption billing or daily capacity/call/token quota. Display provider-reported input/output tokens only; preserve missing-count flags and historical receipts. Keep hardware8/4/1, memory/storage/concurrency safeguards and real validation; never use historical spend or call totals to disable Qwen or research.

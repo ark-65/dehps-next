@@ -185,3 +185,7 @@ docker compose -f compose.yaml -f compose.inference.yaml up -d source reporter w
 ## 最新核数分配
 
 用户已选择训练8核、Qwen最多4核、规划1核，研究日上限同步为691200容量秒、24次推理，旧消耗不清零。线程变化须在旧活动结束后登记，历史评分严格匹配训练线程。详见[8核分配政策](docs/architecture/eight-core-allocation.md)和[实际验收](docs/acceptance/eight-core-20261029.md)。这条更新优先于上方2核政策。
+
+## 本地用量统计最新政策
+
+本地Qwen不按消耗计费，也不再按日容量秒、调用次数或token累计截停。保留8/4/1实时核数和内存/存储等保护，只通过 `dehps-next token-usage`、只读status及正常报告展示实际输入/输出token。旧额度记录仅为历史，budget-set退役；此政策覆盖上面的每日691200/24说明。[执行政策](docs/architecture/local-token-observability.md) · [真实Qwen验收](docs/acceptance/local-token-20261029.md)。
