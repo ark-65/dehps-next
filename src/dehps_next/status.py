@@ -41,6 +41,9 @@ def get_status(db, artifacts):
         "artifact_quota_bytes": db.settings.quota_bytes,
         "database_bytes": db.rows("SELECT pg_database_size(current_database()) AS bytes")[0]["bytes"],
         "storage_scope": "P1 artifact bound only; whole-host envelope and TTL GC are P3 pending",
-        "full_autonomous_research": "P2_PENDING",
+        "research_campaigns": db.rows(
+            "SELECT id,status,selected_node,updated_at FROM research_campaigns ORDER BY created_at"
+        ),
+        "full_autonomous_research": "LOCAL_AGENT_CONFIGURATION_REQUIRED",
         "legacy_access": "NONE",
     }

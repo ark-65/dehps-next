@@ -1,5 +1,5 @@
-name: P0-P1 integrity
-on: [push, pull_request]
+name: Manual P1 legacy integrity
+on: workflow_dispatch
 permissions:
   contents: read
 jobs:

@@ -36,6 +36,18 @@ def main():
     loop.add_argument("--max-cycles", type=int, default=64)
     worker = commands.add_parser("worker")
     worker.add_argument("--max-jobs", type=int)
+    worker.add_argument("--role", choices=["all", "compute", "planning"], default="all")
+    research = commands.add_parser("research-create")
+    research.add_argument("--name", required=True)
+    research.add_argument("--planner", choices=["rules", "local"], default="rules")
+    research.add_argument("--max-nodes", type=int, default=3)
+    research.add_argument("--recent", type=int, default=60)
+    research.add_argument("--historical", type=int, default=200)
+    research_status = commands.add_parser("research-status")
+    research_status.add_argument("--name", required=True)
+    adopt = commands.add_parser("adopt-release")
+    adopt.add_argument("--loop", required=True)
+    adopt.add_argument("--reason", required=True)
     expect = commands.add_parser("expect")
     expect.add_argument("--issue", required=True)
     expect.add_argument("--draw-at", required=True)
@@ -62,7 +74,7 @@ def main():
     try:
         if args.command == "init":
             db.migrate()
-            output({"schema": 1, "status": "initialized", "runtime": str(settings.runtime)})
+            output({"schema": 2, "status": "initialized", "runtime": str(settings.runtime)})
         elif args.command == "sync":
             output(DataService(db, artifacts).sync())
         elif args.command == "import-json":
@@ -86,7 +98,36 @@ def main():
         elif args.command == "expect":
             output(Scheduler(db, artifacts).expect(args.issue, args.draw_at, args.deadline))
         elif args.command == "worker":
-            Worker(db, artifacts).run(args.max_jobs)
+            Worker(db, artifacts, role=args.role).run(args.max_jobs)
+        elif args.command == "research-create":
+            from .research import Research
+
+            output(
+                Research(db, artifacts).create(
+                    args.name,
+                    planner=args.planner,
+                    max_nodes=args.max_nodes,
+                    recent=args.recent,
+                    historical=args.historical,
+                )
+            )
+        elif args.command == "research-status":
+            output(
+                {
+                    "campaign": db.rows("SELECT * FROM research_campaigns WHERE id=%s", (args.name,)),
+                    "nodes": db.rows(
+                        "SELECT path,parent_id,spec,status,evaluation,decision FROM research_nodes WHERE campaign_id=%s ORDER BY created_at",
+                        (args.name,),
+                    ),
+                    "decisions": db.rows(
+                        "SELECT * FROM research_decisions WHERE campaign_id=%s ORDER BY id", (args.name,)
+                    ),
+                }
+            )
+        elif args.command == "adopt-release":
+            from .research import Research
+
+            output(Research(db, artifacts).adopt_release(args.loop, args.reason))
         elif args.command == "status":
             output(get_status(db, artifacts))
         elif args.command == "watch-source":

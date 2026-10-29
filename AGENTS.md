@@ -1,5 +1,8 @@
 # DEHPS Next development boundaries
 
+- Read and follow `AGENT.md`: the owner requires manual Codex squash merges after every PR,
+  no new unit tests and no useless CI. Use actual isolated runtime acceptance instead.
+
 - Work only in this repository and its explicitly named Next containers/database.
 - Never edit, delete, restart or mount legacy DEHPS code, data or services.
 - The owner authorizes read-only history export from the legacy draw table into Next.
@@ -12,5 +15,5 @@
   consumed-label provenance, automatic next tasks, lease fencing and bounded artifact writes.
 - Read git status before edits. Preserve unexpected user changes.
 - Do not commit credentials, runtime receipts, model files, volumes or generated caches.
-- Use the isolated Python 3.12 CPU container environment and real Next PostgreSQL for tests.
+- Use the isolated Python 3.12 CPU container environment and real Next PostgreSQL for live validation.
 - Report code/test, live execution, sustained soak, report delivery and predictive evidence separately.

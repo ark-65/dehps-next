@@ -11,6 +11,7 @@ from psycopg.errors import Error as DatabaseError
 from .domain import now
 from .errors import DomainError, LeaseLost
 from .pipeline import Pipeline
+from .research import Research
 from .scheduler import Scheduler
 
 log = logging.getLogger("dehps_next")
@@ -21,12 +22,14 @@ def event(name, **values):
 
 
 class Worker:
-    def __init__(self, db, artifacts, worker_id=None):
+    def __init__(self, db, artifacts, worker_id=None, role="all"):
         self.db, self.artifacts = db, artifacts
         self.id = worker_id or socket.gethostname()
         self.stop = threading.Event()
         self.scheduler = Scheduler(db, artifacts)
         self.pipeline = Pipeline(db, artifacts)
+        self.research = Research(db, artifacts)
+        self.role = role
         torch.set_num_threads(db.settings.threads)
 
     def status(self, state, job=None, error=None):
@@ -41,10 +44,11 @@ class Worker:
     def once(self):
         try:
             self.scheduler.reconcile()
+            self.research.reconcile()
         except DomainError as exc:
             self.status("BLOCKED", error=exc.code)
             raise
-        job = self.db.claim(self.id)
+        job = self.db.claim(self.id, self.role)
         if job is None:
             self.status("IDLE")
             return False
@@ -71,7 +75,10 @@ class Worker:
         thread.start()
         started = time.monotonic()
         try:
-            self.pipeline.execute(job, pulse)
+            if job["kind"].startswith("RESEARCH_"):
+                self.research.execute(job, pulse)
+            else:
+                self.pipeline.execute(job, pulse)
             event(
                 "job_succeeded",
                 kind=job["kind"],
