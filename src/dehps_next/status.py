@@ -34,12 +34,21 @@ def get_status(db, artifacts):
             "list_digest": digest([e["issue"] for e in historical]),
             "full_branch_comparison_and_protected_holdout": "RESEARCH_CAMPAIGNS_SEPARATE;PROTECTED_HOLDOUT_PENDING",
         }
+    from .local_usage import summary
+
     return {
+        "token_usage": summary(db),
         "code_digest": code_identity(),
         "mail_schedule": db.rows("SELECT payload FROM report_state"),
         "mail_delivery": db.rows("SELECT state,count(*) AS n FROM mail_deliveries GROUP BY state"),
         "host_capacity": host_capacity,
-        "budget_policy": db.rows("SELECT capacity,calls FROM resource_policy WHERE id=1")[0],
+        "runtime_policy": {
+            "local_billing": False,
+            "usage_admission_limits": False,
+            "training_cpus": 8,
+            "inference_cpus": 4,
+            "planner_cpus": 1,
+        },
         "loops": loops,
         "jobs": db.rows("SELECT state,kind,count(*) AS count FROM jobs GROUP BY state,kind"),
         "workers": db.rows("SELECT * FROM worker_status ORDER BY id"),
@@ -55,9 +64,8 @@ def get_status(db, artifacts):
         "programs": db.rows(
             "SELECT id,state,generation,current_campaign,next_due,last_reason,launched_today FROM research_programs"
         ),
-        "capacity_days": db.rows("SELECT * FROM resource_days ORDER BY day DESC LIMIT 7"),
         "active_reservations": db.rows(
-            "SELECT job_id,lane,cpu_reserved,write_reserved,written FROM resource_reservations WHERE state='ACTIVE'"
+            "SELECT job_id,lane,cpu_cap,wall_cap,write_reserved,written FROM resource_reservations WHERE state='ACTIVE'"
         ),
         "resource_wait": db.rows("SELECT payload FROM resource_state"),
         "maintenance": db.rows("SELECT payload FROM maintenance_state"),

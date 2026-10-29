@@ -24,7 +24,7 @@ def endpoint():
     return url
 
 
-def request_json(path, payload=None, timeout=60):
+def request_json(path, payload=None, timeout=180):
     request = urllib.request.Request(
         endpoint() + path,
         data=canonical(payload).encode() if payload is not None else None,
@@ -54,11 +54,11 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse):
         "think": False,
         "keep_alive": "2m",
         "format": schema,
-        "options": {"temperature": 0, "seed": 1729, "num_ctx": 4096, "num_predict": 800, "num_thread": 4},
+        "options": {"temperature": 0, "seed": 1729, "num_ctx": 4096, "num_predict": 2048, "num_thread": 4},
         "messages": [
             {
                 "role": "system",
-                "content": "You are a bounded mathematics research agent. Reply in English JSON only. Use evidence, state falsifiable hypotheses, never claim lottery predictability. You cannot change scoring, budgets, data or execute code. Prior failures must influence your next direction. /no_think",
+                "content": "You are a bounded mathematics research agent. Reply in English JSON only. Use evidence, state falsifiable hypotheses, never claim lottery predictability. You cannot change scoring, resource safeguards, data or execute code. Use only supplied paired verdicts as evidence. reserve_used is not a verdict. An inconclusive result is not a regression. Use the exact candidate method names. Prior failures must influence your next direction. /no_think",
             },
             {"role": "user", "content": canonical(context)},
         ],
@@ -67,16 +67,6 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse):
     with db.pool.connection() as c, c.transaction():
         db.fence(c, job)
         c.execute("SELECT id FROM research_campaigns WHERE id=%s FOR UPDATE", (campaign["id"],))
-        used = c.execute(
-            "SELECT count(*) AS n FROM research_model_calls WHERE campaign_id=%s", (campaign["id"],)
-        ).fetchone()["n"]
-        if used >= campaign["config"]["max_model_calls"]:
-            raise DomainError(
-                "LOCAL_MODEL_CALL_BUDGET", "Model-call budget exhausted, including failed attempts"
-            )
-        from .resources import Resources
-
-        Resources(db).model_call(c)
         call = c.execute(
             """INSERT INTO research_model_calls(campaign_id,job_id,attempt_id,stage,model,model_digest,request)
             VALUES(%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
@@ -84,21 +74,14 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse):
         ).fetchone()["id"]
     pulse()
     started = time.monotonic()
+    metrics = None
+    from .local_usage import record
+
     try:
         response = request_json("/api/chat", payload)
-        pulse()
-        if not response.get("done") or response.get("done_reason") == "length":
-            raise DomainError(
-                "LOCAL_MODEL_TRUNCATED", "Local response did not complete within its token budget"
-            )
-        content = response["message"]["content"]
-        parsed = json.loads(content)
-        response_ref = artifacts.write(
-            canonical({"content": content}).encode(), category="research/inference"
-        )
         metrics = {
-            k: response.get(k)
-            for k in (
+            key: response.get(key)
+            for key in (
                 "total_duration",
                 "load_duration",
                 "prompt_eval_count",
@@ -108,24 +91,43 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse):
             )
         }
         metrics["wall_seconds"] = round(time.monotonic() - started, 4)
+        # Token receipts describe real local generation even if the worker lease, JSON or candidate validation fails.
+        with db.pool.connection() as c, c.transaction():
+            c.execute("UPDATE research_model_calls SET metrics=%s WHERE id=%s", (Jsonb(metrics), call))
+            record(c, call, metrics)
+        pulse()
+        content = response.get("message", {}).get("content", "")
+        response_ref = artifacts.write(
+            canonical({"content": content}).encode(), category="research/inference"
+        )
+        with db.pool.connection() as c:
+            c.execute("UPDATE research_model_calls SET response=%s WHERE id=%s", (Jsonb(response_ref), call))
+        if not response.get("done") or response.get("done_reason") == "length":
+            raise DomainError(
+                "LOCAL_MODEL_TRUNCATED", "Local structured response hit its per-response technical limit"
+            )
+        parsed = json.loads(content)
         with db.pool.connection() as c, c.transaction():
             db.fence(c, job)
-            c.execute(
-                "UPDATE research_model_calls SET response=%s,metrics=%s,state='SUCCEEDED' WHERE id=%s",
-                (Jsonb(response_ref), Jsonb(metrics), call),
-            )
+            c.execute("UPDATE research_model_calls SET state='SUCCEEDED' WHERE id=%s", (call,))
         return parsed, {
             "call_id": call,
             "model": model,
             "model_digest": installed["digest"],
             "metrics": metrics,
         }
-    except Exception:
-        # A lost lease cannot publish a decision; the reserved call still counts against budget.
-        with db.pool.connection() as c:
+    except Exception as exc:
+        failure = {
+            **(metrics or {}),
+            "failure_code": getattr(exc, "code", type(exc).__name__),
+            "wall_seconds": round(time.monotonic() - started, 4),
+        }
+        with db.pool.connection() as c, c.transaction():
             c.execute(
-                "UPDATE research_model_calls SET state='FAILED' WHERE id=%s AND state='RESERVED'", (call,)
+                "UPDATE research_model_calls SET state='FAILED',metrics=%s WHERE id=%s",
+                (Jsonb(failure), call),
             )
+            record(c, call, failure)
         raise
 
 
@@ -186,10 +188,21 @@ def propose(campaign, nodes, pulse, db, artifacts, job):
         "task": "Fill each named hypothesis slot with a distinct executable falsifiable explanation and recipe. Revise ideas using actual prior feedback. Use concise sentences.",
         "slot_methods": {key: method for key, (method, _) in slots.items()},
         "parent": selected["path"],
+        "selected_parent": {
+            "method": selected["spec"]["method"],
+            "spec": selected["spec"],
+            "summary": selected["evaluation"]["summary"],
+            "paired_verdict": selected["decision"],
+        },
         "research_question": campaign["config"].get("topic"),
         "earlier_topic_feedback": db.rows(
-            "SELECT r.topic,n.spec,n.decision,n.evaluation->'summary' AS summary FROM research_nodes n JOIN research_campaigns r ON r.id=n.campaign_id WHERE r.id!=%s AND n.parent_id IS NOT NULL AND n.evaluation IS NOT NULL ORDER BY n.completed_at DESC LIMIT 4",
-            (campaign["id"],),
+            "SELECT r.topic,n.path,n.spec,n.decision,n.evaluation->'summary' AS summary,r.protocol->>'digest' AS protocol_digest FROM research_nodes n JOIN research_campaigns r ON r.id=n.campaign_id WHERE r.id!=%s AND r.dataset_id=%s AND r.protocol->>'digest'=%s AND (r.config->>'numeric_threads')::int=%s AND n.parent_id IS NOT NULL AND n.evaluation IS NOT NULL ORDER BY n.completed_at DESC LIMIT 4",
+            (
+                campaign["id"],
+                campaign["dataset_id"],
+                campaign["protocol"]["digest"],
+                campaign["config"]["numeric_threads"],
+            ),
         ),
         "excluded_recipes": [r["spec"] for r in known[-16:]],
         "feedback": feedback,
@@ -290,22 +303,9 @@ def propose(campaign, nodes, pulse, db, artifacts, job):
 
 
 def use_local_model(db, campaign, nodes):
-    """Reason at root and after three more observations; never stall compute on call allowance."""
-    from .domain import now
-    from .resources import ZONE, Resources
-
+    """Revisit local reasoning as evidence accumulates; usage never disables assistance."""
     if db.rows(
         "SELECT 1 FROM research_model_calls WHERE state='FAILED' AND created_at>now()-interval '5 minutes' LIMIT 1"
     ):
         return False
-    used = db.rows("SELECT count(*) AS n FROM research_model_calls WHERE campaign_id=%s", (campaign["id"],))[
-        0
-    ]["n"]
-    today = db.rows("SELECT calls FROM resource_days WHERE day=%s", (now().astimezone(ZONE).date(),))
-    with db.pool.connection() as c:
-        allowance = Resources.policy(c)["calls"]
-    return (
-        (len(nodes) == 1 or len(nodes) % 3 == 1)
-        and used + 2 <= campaign["config"]["max_model_calls"]
-        and (today[0]["calls"] if today else 0) + 2 <= allowance
-    )
+    return len(nodes) == 1 or len(nodes) % 3 == 1

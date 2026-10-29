@@ -64,5 +64,5 @@ def propose_adaptive(campaign, nodes, pulse, db, artifacts, job):
         "direction_value_model": policy,
         "novel_candidates": len(ranked),
         "estimated_development_reward": value(chosen, selected["evaluation"]["summary"]),
-        "budget_note": "No new LLM call; actual neural direction-value fitting and candidate fitting remain charged.",
+        "execution_note": "No additional Qwen request in this step; neural direction-value and predictor fitting continue under hardware safeguards.",
     }

@@ -29,6 +29,10 @@ class Mail:
         self.db = db
 
     def queue(self, kind, issue, payload, evidence, cycle_id=None):
+        if kind in ("PRE", "POST"):
+            from .local_usage import report_line
+
+            payload = {**payload, "lines": [*payload["lines"], report_line(self.db)]}
         identity = digest([kind, issue])
         with self.db.pool.connection() as c, c.transaction():
             c.execute(

@@ -30,6 +30,7 @@ def main():
         "init",
         "sync",
         "status",
+        "token-usage",
         "steward",
         "steward-once",
         "reporter",
@@ -110,7 +111,7 @@ def main():
     try:
         if args.command == "init":
             db.migrate()
-            output({"schema": 7, "status": "initialized", "runtime": str(settings.runtime)})
+            output({"schema": 8, "status": "initialized", "runtime": str(settings.runtime)})
         elif args.command in ("reporter", "report-prepare", "report-acceptance"):
             from .reports import Reports
 
@@ -128,6 +129,10 @@ def main():
                     except (DomainError, DatabaseError, OSError) as exc:
                         event("reporter_blocked", code=getattr(exc, "code", type(exc).__name__))
                     stop.wait(30)
+        elif args.command == "token-usage":
+            from .local_usage import summary
+
+            output(summary(db))
         elif args.command == "program-enable":
             from .steward import Steward
 
