@@ -36,6 +36,8 @@ def get_status(db, artifacts):
         }
     return {
         "code_digest": code_identity(),
+        "mail_schedule": db.rows("SELECT payload FROM report_state"),
+        "mail_delivery": db.rows("SELECT state,count(*) AS n FROM mail_deliveries GROUP BY state"),
         "host_capacity": host_capacity,
         "budget_policy": db.rows("SELECT capacity,calls FROM resource_policy WHERE id=1")[0],
         "loops": loops,

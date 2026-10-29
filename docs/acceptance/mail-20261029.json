@@ -1,0 +1,102 @@
+{
+  "runtime_digest": "75c3da1bab753935aef87eb96a0e3068009f3fc41fd7a6c1794dbdd639102336",
+  "database": {
+    "name": "dehps_next"
+  },
+  "history": {
+    "n": 3520,
+    "first": "2003001",
+    "latest": "2026123"
+  },
+  "latest_draw": {
+    "issue": "2026123",
+    "red": [
+      4,
+      5,
+      20,
+      21,
+      26,
+      30
+    ],
+    "blue": 12,
+    "draw_at": "2026-10-26 16:00:00+00:00",
+    "available_at": "2026-10-27 15:59:59+00:00",
+    "provenance": "OWNER_AUTHORIZED_LEGACY_HISTORY"
+  },
+  "official_publications": {
+    "n": 100
+  },
+  "forward_sealed": {
+    "issue": "2026124",
+    "mode": "FORWARD",
+    "sealed_at": "2026-10-29 06:28:50.454865+00:00",
+    "payload_digest": "67e1d634223b1de1e7ac91c6c87e9495ebd9e5cb48c88cf0250f4820bb8372e9",
+    "through_issue": "2026123"
+  },
+  "schedule": {
+    "issue": "2026124",
+    "day": "2026-10-29",
+    "draw_time": "2026-10-29 21:15:00+08:00",
+    "prepare_time": "2026-10-29 16:30:00+08:00",
+    "mail_time": "2026-10-29 17:00:00+08:00",
+    "deadline_time": "2026-10-29 19:30:00+08:00"
+  },
+  "pre_render": {
+    "unique_red_tickets": 100,
+    "single_blue": true,
+    "html_bytes": 16018,
+    "table_rows": 101
+  },
+  "post_template": {
+    "actual_replay_issue": "2026123",
+    "scope": "REPLAY_TEMPLATE_ONLY;current draw not yet known"
+  },
+  "smtp": {
+    "acceptance_recipients": 1,
+    "all_smtp_accepted": true,
+    "duplicate_send_skipped": true,
+    "receipts": [
+      {
+        "state": "SENT",
+        "attempts": 1,
+        "accepted_at": "2026-10-29 06:31:01.595646+00:00"
+      }
+    ]
+  },
+  "unverified_calendar_blocked": true,
+  "mail_status": [
+    {
+      "payload": {
+        "at": "2026-10-29T06:41:12.916839+00:00",
+        "mode": "MAIL_ONLY",
+        "reason": "WAITING_17_00",
+        "calendar": {
+          "weekdays": [
+            1,
+            3,
+            6
+          ],
+          "draw_time": "21:15",
+          "mail_time": "17:00",
+          "valid_from": "2026-10-05",
+          "valid_until": "2026-12-31",
+          "closure_note": "2026 National Day closure ends October4; policy coverage starts October5",
+          "prepare_time": "16:30",
+          "rules_source": "https://www.swlc.net.cn/lottery/ssq.html?limit=30&view=previous",
+          "deadline_time": "19:30",
+          "closure_source": "https://www.gdfc.org.cn/datas/content/content_280552.html?subjectID=91"
+        },
+        "delivery": null
+      }
+    }
+  ],
+  "program": [
+    {
+      "id": "autonomous-p3",
+      "state": "COOLDOWN",
+      "generation": 2,
+      "launched_today": 2
+    }
+  ],
+  "scope": "Mail-only delivery; legacy data/config read-only; no old service changes; no dashboard/unit tests/new CI; true post-draw run awaits tonight official result"
+}

@@ -17,3 +17,6 @@
 - Do not commit credentials, runtime receipts, model files, volumes or generated caches.
 - Use the isolated Python 3.12 CPU container environment and real Next PostgreSQL for live validation.
 - Report code/test, live execution, sustained soak, report delivery and predictive evidence separately.
+- Latest owner scope: mail is the primary interface; do not develop a dashboard.
+  Keep existing read-only status APIs. Do not migrate or mutate the legacy mail/update services.
+  Reuse only the explicitly authorized recipient/SMTP configuration via a private Next-only file.

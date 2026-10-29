@@ -26,7 +26,16 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     parser = argparse.ArgumentParser(prog="dehps-next")
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("init", "sync", "status", "steward", "steward-once"):
+    for name in (
+        "init",
+        "sync",
+        "status",
+        "steward",
+        "steward-once",
+        "reporter",
+        "report-prepare",
+        "report-acceptance",
+    ):
         commands.add_parser(name)
     loop = commands.add_parser("create-loop")
     loop.add_argument("--name", required=True)
@@ -58,6 +67,9 @@ def main():
     gc.add_argument("--apply", action="store_true")
     disable = commands.add_parser("program-disable")
     disable.add_argument("--name", required=True)
+    program_adopt = commands.add_parser("program-adopt")
+    program_adopt.add_argument("--name", required=True)
+    program_adopt.add_argument("--reason", required=True)
     budget = commands.add_parser("budget-set")
     budget.add_argument("--capacity-seconds", type=int, required=True)
     budget.add_argument("--model-calls", type=int, required=True)
@@ -91,7 +103,24 @@ def main():
     try:
         if args.command == "init":
             db.migrate()
-            output({"schema": 4, "status": "initialized", "runtime": str(settings.runtime)})
+            output({"schema": 5, "status": "initialized", "runtime": str(settings.runtime)})
+        elif args.command in ("reporter", "report-prepare", "report-acceptance"):
+            from .reports import Reports
+
+            reports = Reports(db, artifacts)
+            if args.command == "report-prepare":
+                output(reports.tick(prepare_now=True, deliver=False))
+            elif args.command == "report-acceptance":
+                output({"report": reports.acceptance(), "delivery": reports.mail.deliver_one()})
+            else:
+                stop = threading.Event()
+                signal.signal(signal.SIGTERM, lambda *_: stop.set())
+                while not stop.is_set():
+                    try:
+                        output(reports.tick())
+                    except (DomainError, DatabaseError, OSError) as exc:
+                        event("reporter_blocked", code=getattr(exc, "code", type(exc).__name__))
+                    stop.wait(30)
         elif args.command == "program-enable":
             from .steward import Steward
 
@@ -108,6 +137,10 @@ def main():
             from .lifecycle import Lifecycle
 
             output(Lifecycle(db, artifacts).collect(apply=args.apply))
+        elif args.command == "program-adopt":
+            from .steward import Steward
+
+            output(Steward(db, artifacts).adopt(args.name, args.reason))
         elif args.command == "program-disable":
             db.rows(
                 "UPDATE research_programs SET state='DISABLED',last_reason='Operator disabled automatic next topics' WHERE id=%s RETURNING id",

@@ -1,4 +1,4 @@
-from datetime import timedelta
+from zoneinfo import ZoneInfo
 
 from psycopg.types.json import Jsonb
 
@@ -117,7 +117,7 @@ class Pipeline:
 
     def evaluating(self, job, context, pulse):
         prediction = self.db.rows("SELECT * FROM predictions WHERE cycle_id=%s", (context["id"],))[0]
-        actuals = self.db.rows("SELECT * FROM draws WHERE issue=%s", (context["issue"],))
+        actuals = self.db.rows("SELECT * FROM effective_draws WHERE issue=%s", (context["issue"],))
         if not actuals:
             raise DomainError("LABEL_NOT_AVAILABLE", "Draw has not been ingested")
         actual = actuals[0]
@@ -125,12 +125,14 @@ class Pipeline:
             if actual["available_at"] > now() or actual["draw_at"] > now():
                 raise DomainError("LABEL_NOT_AVAILABLE", "Draw is not yet available")
             target = self.db.rows("SELECT * FROM targets WHERE issue=%s", (context["issue"],))[0]
+            if now() < target["draw_at"]:
+                raise DomainError("LABEL_NOT_AVAILABLE", "Registered draw has not occurred")
             if prediction["sealed_at"] >= target["deadline"]:
                 raise DomainError("LATE_PREDICTION", "Prediction missed its pre-draw deadline")
             # Date-only official receipts must agree with the registered local draw day.
             if (
-                abs((actual["draw_at"] - target["draw_at"]).total_seconds())
-                > timedelta(days=1).total_seconds()
+                actual["draw_at"].astimezone(ZoneInfo("Asia/Shanghai")).date()
+                != target["draw_at"].astimezone(ZoneInfo("Asia/Shanghai")).date()
             ):
                 raise DomainError("TARGET_DATE_CONFLICT", "Registered draw date differs from official data")
         metrics = evaluate(prediction["payload"], actual, prediction["baseline"])

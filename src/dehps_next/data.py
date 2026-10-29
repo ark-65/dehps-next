@@ -1,6 +1,6 @@
 import json
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from psycopg.types.json import Jsonb
@@ -61,6 +61,12 @@ class DataService:
             raise DomainError("DUPLICATE_ISSUE", "Duplicate issue in input batch")
         if any(timestamp(r["draw_at"]) > observed_at for r in clean):
             raise DomainError("FUTURE_LABEL", "Future draw labels cannot be ingested")
+        if source_url == CWL_URL and any(
+            timestamp(r["draw_at"]) + timedelta(hours=21, minutes=15) > observed_at for r in clean
+        ):
+            raise DomainError(
+                "PREMATURE_OFFICIAL_LABEL", "Do not accept same-day labels before the verified draw time"
+            )
         with self.db.pool.connection() as c, c.transaction():
             c.execute("SELECT pg_advisory_xact_lock(740132)")
             new = []
@@ -77,6 +83,9 @@ class DataService:
                     "SELECT source_id FROM source_batches WHERE id=%s", (batch_id,)
                 ).fetchone()
                 if receipt:
+                    self.record_publications(
+                        c, clean, receipt["source_id"], observed_at, source_url, provenance
+                    )
                     return {
                         "inserted": 0,
                         "duplicate": len(clean),
@@ -89,6 +98,7 @@ class DataService:
                     "INSERT INTO sources VALUES(%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
                     (ref["sha256"], source_url, observed_at, Jsonb(ref), provenance),
                 )
+                self.record_publications(c, clean, ref["sha256"], observed_at, source_url, provenance)
                 c.execute(
                     "INSERT INTO source_batches VALUES(%s,%s) ON CONFLICT DO NOTHING",
                     (batch_id, ref["sha256"]),
@@ -115,7 +125,17 @@ class DataService:
                         digest(r),
                     ),
                 )
+            self.record_publications(c, clean, source_id, observed_at, source_url, provenance)
             return {"inserted": len(new), "duplicate": len(clean) - len(new), "source": source_id}
+
+    @staticmethod
+    def record_publications(c, records, source, observed, url, provenance):
+        if url == CWL_URL and provenance.startswith("OFFICIAL_CWL"):
+            for row in records:
+                c.execute(
+                    "INSERT INTO official_publications VALUES(%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+                    (row["issue"], source, observed, "OFFICIAL_CWL_COMPLETE_LABEL_FIRST_VERIFIED_IN_NEXT"),
+                )
 
     def sync(self):
         records, raw = fetch_official()
@@ -127,7 +147,7 @@ class DataService:
         )
 
     def snapshot(self, c, *, cutoff, target_draw_at, mode):
-        query = """SELECT issue,red,blue,draw_at,available_at,observed_at,source_id FROM draws
+        query = """SELECT issue,red,blue,draw_at,available_at,observed_at,source_id FROM effective_draws
                    WHERE available_at<=%s AND draw_at<%s"""
         params = [cutoff, target_draw_at]
         if mode == "FORWARD":
@@ -160,7 +180,7 @@ class DataService:
 
     def research_snapshot(self, c):
         cutoff = c.execute(
-            "SELECT max(available_at) AS cutoff FROM draws WHERE available_at<=now()"
+            "SELECT max(available_at) AS cutoff FROM effective_draws WHERE available_at<=now()"
         ).fetchone()["cutoff"]
         if cutoff is None:
             raise DomainError("NO_PRIOR_DATA", "No available history for research")

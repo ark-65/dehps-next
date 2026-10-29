@@ -15,7 +15,7 @@ from shutil import disk_usage
 ROOT = Path(__file__).resolve().parents[1]
 NAMES = [
     f"dehps-next-p0p1-{service}-1"
-    for service in ("database", "api", "source", "worker", "planner", "steward")
+    for service in ("database", "api", "source", "worker", "planner", "steward", "reporter")
 ]
 NAMES += ["dehps-next-inference"]
 

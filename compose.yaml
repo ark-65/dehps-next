@@ -67,7 +67,16 @@ services:
     cpus: 0.5
   source:
     <<: *app
-    command: [watch-source, --interval, "3600"]
+    command: [watch-source, --interval, "900"]
+    mem_limit: 512m
+    cpus: 0.5
+  reporter:
+    <<: *app
+    command: [reporter]
+    env_file:
+      - .env
+      - path: .mail.env
+        required: false
     mem_limit: 512m
     cpus: 0.5
   api:
