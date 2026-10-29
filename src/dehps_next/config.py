@@ -14,6 +14,7 @@ class Settings:
     lease_seconds: int = 120
     quota_bytes: int = 256 * 1024 * 1024
     artifact_bytes: int = 16 * 1024 * 1024
+    training_threads: int = 2
 
     @classmethod
     def from_env(cls):
@@ -38,7 +39,12 @@ class Settings:
             float(os.getenv("DEHPS_NEXT_POLL_SECONDS", "2")),
             int(os.getenv("DEHPS_NEXT_LEASE_SECONDS", "120")),
             int(os.getenv("DEHPS_NEXT_QUOTA_MIB", "1024")) * 1024 * 1024,
+            training_threads=int(
+                os.getenv("DEHPS_NEXT_TRAINING_THREADS", os.getenv("DEHPS_NEXT_THREADS", "2"))
+            ),
         )
+        if not 1 <= result.training_threads <= 8:
+            raise ValueError("Invalid training thread count")
         if not 1 <= result.threads <= 8 or not 5 <= result.lease_seconds <= 3600:
             raise ValueError("Invalid CPU or lease limits")
         if result.poll_seconds < 0.05 or result.quota_bytes < 32 * 1024 * 1024:

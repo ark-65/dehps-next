@@ -64,7 +64,7 @@ class Research:
             "max_nodes": max_nodes,
             "root_spec": root_spec,
             "topic": topic,
-            "numeric_threads": self.db.settings.threads,
+            "numeric_threads": self.db.settings.training_threads,
             "code_digest": code_identity(),
             "numeric_digest": numeric_identity(),
             "node_seconds": 600,

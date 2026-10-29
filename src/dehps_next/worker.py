@@ -93,6 +93,13 @@ class Worker:
         started = time.monotonic()
         cpu_started = time.process_time()
         try:
+            if (
+                job["kind"] == "RESEARCH_EVALUATE"
+                and self.research.context(job)["config"].get("numeric_threads", 2) != torch.get_num_threads()
+            ):
+                raise DomainError(
+                    "NUMERIC_THREADS_CHANGED", "Frozen campaign threads differ from the compute worker"
+                )
             if job["kind"].startswith("RESEARCH_"):
                 self.research.execute(job, pulse)
             else:

@@ -181,3 +181,7 @@ docker compose -f compose.yaml -f compose.inference.yaml up -d source reporter w
 用户明确选择日上限172800容量秒、24次本机推理。活动轮数不再截停，活动间不强制冷却；保留已用计数、存储硬上限、正式任务优先及16:59–17:00封存限制。普通研究产物可在容量压力下安全回收，精简配方记忆独立保留；局部课程结束后进入更长历史/正则化课程，不把同一数据上的研究默认停为等待新开奖。
 
 [最新执行政策与实际停机审计](docs/architecture/continuous-capacity-policy.md)优先于前面P3初版的7200容量秒/12轮默认说明。
+
+## 最新核数分配
+
+用户已选择训练8核、Qwen最多4核、规划1核，研究日上限同步为691200容量秒、24次推理，旧消耗不清零。线程变化须在旧活动结束后登记，历史评分严格匹配训练线程。详见[8核分配政策](docs/architecture/eight-core-allocation.md)和[实际验收](docs/acceptance/eight-core-20261029.md)。这条更新优先于上方2核政策。

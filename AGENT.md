@@ -22,3 +22,5 @@ Owner instruction, 2026-10-29. Applies to all future work in this repository.
 
 - Owner selected 2026-10-29: two-core on-demand persistent research, 172800 capacity-seconds/day, 24 local model calls/day. Preserve existing spend/call counters; do not stop by campaign count or wait for a new draw while useful registered work and resources remain.
 - Controller-only upgrades must retain numerically equivalent recipe exclusions and reuse audited historical scores; never count cached fits as newly executed training.
+
+- Latest owner allocation 2026-10-29: training8 CPU, local inference4 CPU, planner1 CPU; 691200 capacity-seconds/day, 24 model calls/day. Preserve prior counters and formal forecast/mail timing. Keep process threads distinct from frozen training threads; complete active campaigns before changing thread configuration.
