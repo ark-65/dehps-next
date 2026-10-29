@@ -37,7 +37,7 @@ class Settings:
             int(os.getenv("DEHPS_NEXT_THREADS", "2")),
             float(os.getenv("DEHPS_NEXT_POLL_SECONDS", "2")),
             int(os.getenv("DEHPS_NEXT_LEASE_SECONDS", "120")),
-            int(os.getenv("DEHPS_NEXT_QUOTA_MIB", "256")) * 1024 * 1024,
+            int(os.getenv("DEHPS_NEXT_QUOTA_MIB", "1024")) * 1024 * 1024,
         )
         if not 1 <= result.threads <= 8 or not 5 <= result.lease_seconds <= 3600:
             raise ValueError("Invalid CPU or lease limits")

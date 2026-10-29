@@ -171,9 +171,10 @@ def compute_node(snapshot, spec, protocol, pulse, checkpoint, saved=None, initia
     if saved:
         if saved["identity"] != identity:
             raise DomainError("RESEARCH_CHECKPOINT_CHANGED", "Research checkpoint input differs")
-        rows = saved["rows"]
+        rows = list(saved["rows"])
         if [r["origin"] for r in rows] != all_origins[: len(rows)]:
             raise DomainError("RESEARCH_CHECKPOINT_GAP", "Research cursor is not a prefix")
+    restored_origins = len(rows)
     start = time.monotonic()
     for position in range(len(rows), len(all_origins)):
         pulse()
@@ -214,7 +215,10 @@ def compute_node(snapshot, spec, protocol, pulse, checkpoint, saved=None, initia
         encode_torch(anchor),
         {
             "seconds_this_attempt": round(time.monotonic() - start, 4),
-            "resumed_origins": len(saved["rows"]) if saved else 0,
+            "resumed_origins": restored_origins,
+            "origin_fits_executed_this_attempt": len(all_origins) - restored_origins,
+            "gradient_steps_executed_this_attempt": (len(all_origins) - restored_origins + 1)
+            * spec["epochs"],
             "committed_origin_and_anchor_steps": len(all_origins) * spec["epochs"] + spec["epochs"],
             "step_count_scope": "unique_completed_fits;excludes_interrupted_or_recomputed_work",
             "anchor_weight_digest": anchor["weight_digest"],

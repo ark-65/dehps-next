@@ -7,8 +7,8 @@
 - Never edit, delete, restart or mount legacy DEHPS code, data or services.
 - The owner authorizes read-only history export from the legacy draw table into Next.
   Use SELECT-only transactions with limits/timeouts; no legacy training-table reads or writes.
-- Keep the v1.1 architecture under docs/architecture. P0/P1 is an execution and learning core;
-  branch intelligence, math research, full retention and business acceptance are later stages.
+- Keep the v1.1 architecture under docs/architecture. P0-P3 include learning, bounded research,
+  resource admission and owned-artifact lifecycle. Sustained shadow/business acceptance is P4.
 - Red Top100 and a single blue Top1 are separate outputs. Blue 50% is an unproven target.
 - Historical replay, synthetic tests and genuine pre-draw forward evidence must stay distinct.
 - Protect prior-only features, immutable sealed predictions, real parameter updates,

@@ -24,7 +24,7 @@ def endpoint():
     return url
 
 
-def request_json(path, payload=None, timeout=180):
+def request_json(path, payload=None, timeout=60):
     request = urllib.request.Request(
         endpoint() + path,
         data=canonical(payload).encode() if payload is not None else None,
@@ -54,7 +54,7 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse):
         "think": False,
         "keep_alive": "2m",
         "format": schema,
-        "options": {"temperature": 0, "seed": 1729, "num_ctx": 4096, "num_predict": 1300, "num_thread": 4},
+        "options": {"temperature": 0, "seed": 1729, "num_ctx": 4096, "num_predict": 800, "num_thread": 4},
         "messages": [
             {
                 "role": "system",
@@ -74,6 +74,9 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse):
             raise DomainError(
                 "LOCAL_MODEL_CALL_BUDGET", "Model-call budget exhausted, including failed attempts"
             )
+        from .resources import Resources
+
+        Resources(db).model_call(c)
         call = c.execute(
             """INSERT INTO research_model_calls(campaign_id,job_id,attempt_id,stage,model,model_digest,request)
             VALUES(%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
@@ -129,7 +132,12 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse):
 def propose(campaign, nodes, pulse, db, artifacts, job):
     selected = next(n for n in nodes if n["id"] == campaign["selected_node"])
     attempted = {n["spec"]["method"] for n in nodes if n["parent_id"] is not None}
-    allowed = [m for m in ("fft", "ridge", "newton") if m not in attempted] or ["fft", "ridge", "newton"]
+    methods = (campaign["config"].get("topic") or {}).get("methods", ["fft", "ridge", "newton"])
+    allowed = [m for m in methods if m not in attempted] or methods
+    known = db.rows(
+        "SELECT n.spec FROM research_nodes n JOIN research_campaigns r ON r.id=n.campaign_id WHERE r.dataset_id=%s AND r.config->>'code_digest'=%s ORDER BY n.created_at LIMIT 2048",
+        (campaign["dataset_id"], campaign["config"]["code_digest"]),
+    )
     # Named method slots make diversity a grammar constraint, not a prose request.
     slots = {m: (m, [8, 16, 24, 32]) for m in allowed}
     if len(allowed) == 1:
@@ -179,6 +187,12 @@ def propose(campaign, nodes, pulse, db, artifacts, job):
         "task": "Fill each named hypothesis slot with a distinct executable falsifiable explanation and recipe. Revise ideas using actual prior feedback. Use concise sentences.",
         "slot_methods": {key: method for key, (method, _) in slots.items()},
         "parent": selected["path"],
+        "research_question": campaign["config"].get("topic"),
+        "earlier_topic_feedback": db.rows(
+            "SELECT r.topic,n.spec,n.decision,n.evaluation->'summary' AS summary FROM research_nodes n JOIN research_campaigns r ON r.id=n.campaign_id WHERE r.id!=%s AND n.parent_id IS NOT NULL AND n.evaluation IS NOT NULL ORDER BY n.completed_at DESC LIMIT 4",
+            (campaign["id"],),
+        ),
+        "excluded_recipes": [r["spec"] for r in known[-16:]],
         "feedback": feedback,
         "method_cards": {
             "fft": "Causal-window low-pass rFFT retains bins 0..3. Lottery labels may have no stable periodicity.",
@@ -211,8 +225,8 @@ def propose(campaign, nodes, pulse, db, artifacts, job):
             **{k: hypothesis[k] for k in ("window", "epochs", "learning_rate", "weight_decay")},
         }
         validate_spec(spec)
-        if any(n["spec"] == spec for n in nodes) or any(v["spec"] == spec for v in candidates):
-            raise DomainError("DUPLICATE_RESEARCH_DIRECTION", "Agent repeated an existing candidate")
+        if any(n["spec"] == spec for n in known) or any(v["spec"] == spec for v in candidates):
+            continue
         candidates.append(
             {
                 "slot": key,
@@ -222,6 +236,8 @@ def propose(campaign, nodes, pulse, db, artifacts, job):
                 "tool_result": run_tool(method),
             }
         )
+    if not candidates:
+        raise DomainError("SEARCH_SPACE_EXHAUSTED", "No novel recipe for this frozen snapshot")
     value, policy = train_policy(db, artifacts, campaign, job)
     for candidate in candidates:
         candidate["estimated_development_reward"] = value(

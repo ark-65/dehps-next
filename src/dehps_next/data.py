@@ -72,11 +72,26 @@ class DataService:
                 else:
                     new.append(r)
             if not new:
+                batch_id = digest([source_url, provenance, sorted(clean, key=lambda r: r["issue"])])
+                receipt = c.execute(
+                    "SELECT source_id FROM source_batches WHERE id=%s", (batch_id,)
+                ).fetchone()
+                if receipt:
+                    return {
+                        "inserted": 0,
+                        "duplicate": len(clean),
+                        "source": receipt["source_id"],
+                        "semantic_receipt_reused": True,
+                    }
                 # Retain a compact independent source receipt even when all draws already exist.
                 ref = self.artifacts.write(raw, category="sources")
                 c.execute(
                     "INSERT INTO sources VALUES(%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
                     (ref["sha256"], source_url, observed_at, Jsonb(ref), provenance),
+                )
+                c.execute(
+                    "INSERT INTO source_batches VALUES(%s,%s) ON CONFLICT DO NOTHING",
+                    (batch_id, ref["sha256"]),
                 )
                 return {"inserted": 0, "duplicate": len(clean), "source": ref["sha256"]}
             ref = self.artifacts.write(raw, category="sources")
@@ -142,3 +157,11 @@ class DataService:
             VALUES(%s,%s,%s,%s,%s,%s) RETURNING *""",
             (identity, rows[-1]["issue"], cutoff, mode, len(rows), Jsonb(ref)),
         ).fetchone()
+
+    def research_snapshot(self, c):
+        cutoff = c.execute(
+            "SELECT max(available_at) AS cutoff FROM draws WHERE available_at<=now()"
+        ).fetchone()["cutoff"]
+        if cutoff is None:
+            raise DomainError("NO_PRIOR_DATA", "No available history for research")
+        return self.snapshot(c, cutoff=cutoff, target_draw_at=cutoff, mode="REPLAY")

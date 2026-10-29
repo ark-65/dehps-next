@@ -6,6 +6,7 @@ x-app: &app
   environment:
     DEHPS_NEXT_RUNTIME: /app/runtime/application
     DEHPS_NEXT_THREADS: "2"
+    DEHPS_NEXT_QUOTA_MIB: "1024"
     OPENBLAS_NUM_THREADS: "2"
     OMP_NUM_THREADS: "2"
     MKL_NUM_THREADS: "2"
@@ -13,6 +14,7 @@ x-app: &app
     DEHPS_NEXT_RESEARCH_MODEL: qwen3:1.7b
   volumes:
     - ./runtime/application:/app/runtime/application
+    - ./runtime/host:/app/runtime/host:ro
   networks: [next]
   read_only: true
   tmpfs: ["/tmp:size=64m"]
@@ -58,6 +60,11 @@ services:
     command: [worker, --role, planning]
     mem_limit: 1g
     cpus: 1
+  steward:
+    <<: *app
+    command: [steward]
+    mem_limit: 512m
+    cpus: 0.5
   source:
     <<: *app
     command: [watch-source, --interval, "3600"]

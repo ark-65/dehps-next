@@ -9,8 +9,12 @@ from .errors import DomainError
 
 
 class Artifacts:
-    def __init__(self, settings):
+    def __init__(self, settings, db=None):
         self.settings = settings
+        self.db = db
+        self.reservation_token = None
+        if db is not None:
+            db.artifacts = self
         self.root = settings.runtime
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
 
@@ -39,10 +43,9 @@ class Artifacts:
         return total
 
     def ensure_capacity(self, reserve=8 * 1024 * 1024):
-        if (
-            self.usage() + reserve > self.settings.quota_bytes
-            or shutil.disk_usage(self.root).free < reserve + 64 * 1024 * 1024
-        ):
+        if self.usage() + reserve > self.settings.quota_bytes or shutil.disk_usage(
+            self.root
+        ).free < reserve + max(20 * 1024**3, shutil.disk_usage(self.root).total * 0.05):
             raise DomainError("STORAGE_QUOTA", "Insufficient owned-runtime or filesystem space")
 
     def write(self, data, *, category="objects", key=None):
@@ -52,8 +55,23 @@ class Artifacts:
         relative = f"{category}/{key or sha}"
         p = self.path(relative)
         with self.locked():
+            if self.db and self.reservation_token:
+                with self.db.pool.connection() as c:
+                    if not c.execute(
+                        """UPDATE resource_reservations SET written=written+%s
+                        WHERE token=%s AND state='ACTIVE' AND written+%s<=write_reserved RETURNING token""",
+                        (len(data), self.reservation_token, len(data)),
+                    ).fetchone():
+                        raise DomainError("YIELD_WRITE_BUDGET", "Task exhausted its reserved write allowance")
             # Reserve the whole temporary write as well as the existing file.
-            self.ensure_capacity(len(data))
+            pending = int(
+                self.db.rows(
+                    "SELECT coalesce(sum(greatest(0,write_reserved-written)),0) AS n FROM resource_reservations WHERE state='ACTIVE'"
+                )[0]["n"]
+                if self.db
+                else 0
+            )
+            self.ensure_capacity(len(data) + pending)
             p.parent.mkdir(parents=True, exist_ok=True)
             fd, temporary = tempfile.mkstemp(prefix=".pending-", dir=p.parent)
             try:
@@ -67,12 +85,32 @@ class Artifacts:
                     os.fsync(d)
                 finally:
                     os.close(d)
+                if self.db:
+                    from psycopg.types.json import Jsonb
+
+                    with self.db.pool.connection() as c:
+                        c.execute(
+                            """INSERT INTO artifact_catalog(path,ref,category) VALUES(%s,%s,%s)
+                            ON CONFLICT(path) DO UPDATE SET ref=excluded.ref,state='LIVE',candidate_at=NULL,
+                            writer_until=now()+interval '5 minutes',deleted_at=NULL""",
+                            (
+                                relative,
+                                Jsonb({"path": relative, "sha256": sha, "bytes": len(data)}),
+                                category,
+                            ),
+                        )
             finally:
                 if os.path.exists(temporary):
                     os.unlink(temporary)
         return {"path": relative, "sha256": sha, "bytes": len(data)}
 
     def read(self, ref):
+        if self.db:
+            row = self.db.rows("SELECT state FROM artifact_catalog WHERE path=%s", (ref["path"],))
+            if row and row[0]["state"] == "DELETED":
+                raise DomainError(
+                    "ARTIFACT_RETIRED", "Optional research detail retired; summary and digest retained"
+                )
         if ref["bytes"] > self.settings.artifact_bytes:
             raise DomainError("ARTIFACT_TOO_LARGE", "Read limit exceeded")
         p = self.path(ref["path"])

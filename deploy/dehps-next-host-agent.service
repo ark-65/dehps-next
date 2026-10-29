@@ -1,0 +1,20 @@
+[Unit]
+Description=DEHPS Next host capacity and owned image lifecycle
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/dehps-next
+ExecStart=/usr/bin/python3 %h/dehps-next/scripts/host-agent.py
+Restart=on-failure
+RestartSec=15
+Nice=10
+IOSchedulingClass=idle
+CPUQuota=10%
+MemoryMax=256M
+LogRateLimitIntervalSec=3600
+LogRateLimitBurst=20
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
