@@ -24,7 +24,9 @@ def remember(c, dataset, numeric, spec, verdict=None, summary=None):
     c.execute(
         """INSERT INTO research_recipe_memory(dataset_id,numeric_digest,spec_digest,spec,verdict,summary)
         VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(dataset_id,numeric_digest,spec_digest)
-        DO UPDATE SET verdict=coalesce(excluded.verdict,research_recipe_memory.verdict),
+        DO UPDATE SET verdict=CASE
+          WHEN excluded.verdict IS NULL AND research_recipe_memory.verdict='STALE_UNTRAINED' THEN NULL
+          ELSE coalesce(excluded.verdict,research_recipe_memory.verdict) END,
         summary=coalesce(excluded.summary,research_recipe_memory.summary),last_seen_at=now()""",
         (dataset, numeric, identity, Jsonb(spec), verdict, Jsonb(summary) if summary else None),
     )
@@ -34,7 +36,7 @@ def known_specs(db, dataset):
     return [
         r["spec"]
         for r in db.rows(
-            "SELECT spec FROM research_recipe_memory WHERE dataset_id=%s AND numeric_digest=%s",
+            "SELECT spec FROM research_recipe_memory WHERE dataset_id=%s AND numeric_digest=%s AND verdict IS DISTINCT FROM 'STALE_UNTRAINED' ORDER BY last_seen_at,spec_digest",
             (dataset, numeric_identity()),
         )
     ]

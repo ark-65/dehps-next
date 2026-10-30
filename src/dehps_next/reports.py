@@ -55,15 +55,38 @@ class Reports:
                 f"期号：{prediction['issue']}；开奖：{target['draw_time'].strftime('%Y-%m-%d %H:%M')}（上海时间）",
                 f"证据：真实开奖前封存 FORWARD；封存：{prediction['sealed_at'].astimezone(ZONE).isoformat()}",
                 f"历史截至：{prediction['through_issue']}；模型：{prediction['model_id'][:16]}；神经网络实际训练已完成。",
-                f"开发回归：近100期 {windows['recent']['blue_top1_hits']}/100；近10期 {windows['recent10']['blue_top1_hits']}/10；随机历史 {windows['random_historical']['blue_top1_hits']}/{windows['random_historical']['n']}。这些是反复搜索使用的开发证据。",
+                self.validation_line(windows, selection.get("business")),
                 f"门槛：同一冻结清单、父节点比较、蓝球损失及红球约束通过；研究节点 {selection['path']}，协议 {selection['protocol_digest'][:16]}。",
                 "当前为研究性推荐；开发回归通过不代表稳定优于随机，也不代表50%业务目标达标。此前提前生成的验收预测不作为这封正式报告的预测。",
                 f"唯一蓝球 Top1：{data['blue_top1']:02d}；红球 Top100 组合见下表。排序分数不等于中奖概率。",
-                f"已结算前向蓝球：{summary['hits']}/{summary['n']}（含覆盖缺口 {summary['missing']} 期）；50%目标未建立。研究方向改善不代表已优于随机基线。",
+                f"已结算前向蓝球：{summary['hits']}/{summary['n']}；红5及以上：{summary['red5_hits']}/{summary['n']}（含覆盖缺口 {summary['missing']} 期）。历史开发指标的缓步提高不代表已建立前向能力。",
                 "训练日程：开奖日17:00暂停，收尾完成即封存发信，不等待19:00；本期完整官方结果核验后恢复。",
                 "数据使用 Next 独立数据库；初始历史来自授权导入，后续开奖直接同步福彩官方。",
             ],
         }
+
+    @staticmethod
+    def validation_line(windows, business=None):
+        labels = {
+            "recent": "近100期",
+            "recent50": "近50期",
+            "recent10": "近10期",
+            "random_historical": "历史抽样",
+        }
+        parts = []
+        for key in ("recent", "recent50", "recent10", "random_historical"):
+            if key not in windows:
+                continue
+            w = windows[key]
+            text = f"{labels[key]}蓝球{w['blue_top1_hits']}/{w['n']}"
+            if business:
+                text += f"、红5及以上{business['windows'][key]['red5_periods']}/{w['n']}"
+            parts.append(text)
+        return (
+            "开发回归："
+            + "；".join(parts)
+            + "。按相同冻结期次比较小幅进步；重叠窗口不是独立证据，50%不是改善门槛。"
+        )
 
     def revision_lines(self, issue):
         if self.db.rows("SELECT 1 FROM forecast_schedule_reopenings WHERE issue=%s", (issue,)):
@@ -74,7 +97,8 @@ class Reports:
 
     def forward_summary(self):
         return self.db.rows("""SELECT count(*) AS n,coalesce(sum((e.metrics->>'blue_top1_hit')::int),0) AS hits,
-            count(*) FILTER(WHERE s.state='MISSED') AS missing FROM effective_forecast_selections s
+            count(*) FILTER(WHERE s.state='MISSED') AS missing,
+            coalesce(sum(((e.metrics->>'red_max_matches')::int>=5)::int),0) AS red5_hits FROM effective_forecast_selections s
             JOIN effective_draws d ON d.issue=s.issue LEFT JOIN evaluations e ON e.cycle_id=s.cycle_id
             WHERE d.available_at<=now() AND d.draw_at<=now()""")[0]
 
@@ -166,7 +190,7 @@ class Reports:
                             "lines": [
                                 *self.revision_lines(target["issue"]),
                                 "17:00收尾时仍没有完成合格候选封存，本期无通过门槛的正式推荐。",
-                                f"近期100期、最近10期与随机历史回归状态：{state['draft']['state']}",
+                                f"{'近100期、近50期、近10期' if self.db.settings.research_validation == 'recent-windows-v4' else '近100期、近10期与历史抽样'}核验状态：{state['draft']['state']}",
                                 f"校验未通过原因：{(state['draft'].get('gate') or {}).get('reasons', ['尚无完整验证结果'])}",
                                 "17:00停止训练并收尾复核，完成即封存、发送，不等待19:00；19:30仅为故障兜底截止。本期官方开奖号核验后自动恢复训练。",
                                 "提前验收预测已保留为验收记录，不算本期正式报告；业务覆盖缺口如实计入。50%目标未建立。",

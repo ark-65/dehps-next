@@ -59,6 +59,11 @@ class Research:
             raise DomainError("RESEARCH_POLICY", "Invalid campaign, planner or node budget")
         root_spec = root_spec or ROOT_SPEC
         validate_spec(root_spec)
+        if self.db.settings.research_validation == "recent-windows-v4" and topic:
+            topic = {
+                **topic,
+                "question": "Improve red5+ Top100 and blueTop1 hit rates on chronological100/50/10 replay without future labels",
+            }
         config = {
             "planner": planner,
             "max_nodes": max_nodes,
@@ -66,6 +71,9 @@ class Research:
             "topic": topic,
             "numeric_threads": self.db.settings.training_threads,
             "origin_processes": self.db.settings.origin_processes,
+            "proposal_policy": self.db.settings.research_agent,
+            "pipeline_depth": self.db.settings.research_pipeline_depth,
+            "validation_policy": self.db.settings.research_validation,
             "numeric_cpu_pool": self.db.settings.cpu_pool,
             "inference_threads": self.db.settings.inference_threads,
             "inference_backend": self.db.settings.inference_backend,
@@ -74,7 +82,7 @@ class Research:
             "numeric_digest": numeric_identity(),
             "node_seconds": 600,
             "recent": recent,
-            "historical": historical,
+            "historical": 0 if self.db.settings.research_validation == "recent-windows-v4" else historical,
             "inference_policy": "LOCAL_TOKEN_OBSERVATION_ONLY",
             "purpose": "DEVELOPMENT_RESEARCH_NOT_FORMAL_PREDICTION",
         }
@@ -86,7 +94,12 @@ class Research:
                     raise DomainError("CAMPAIGN_CONFLICT", "Existing research config is frozen")
                 return previous
             dataset = DataService(self.db, self.artifacts).research_snapshot(c)
-            protocol = make_protocol(dataset["sample_count"], recent, historical)
+            if self.db.settings.research_validation == "recent-windows-v4":
+                from .research_hits import make_protocol as make_recent_protocol
+
+                protocol = make_recent_protocol(dataset["sample_count"])
+            else:
+                protocol = make_protocol(dataset["sample_count"], recent, historical)
             c.execute(
                 """INSERT INTO research_campaigns(id,config,dataset_id,protocol)
                 VALUES(%s,%s,%s,%s)""",
@@ -177,6 +190,18 @@ class Research:
             self.plan(job, node, pulse)
 
     def evaluate(self, job, node, pulse):
+        from .research_hits import VERSION as HIT_VERSION
+
+        hit_mode = node["protocol"]["version"] == HIT_VERSION
+        if (
+            node["parent_id"]
+            and node["config"].get("proposal_policy") == "candidates-v2"
+            and node["config"]["planner"] == "local"
+        ):
+            from .research_proposals import skip_stale_node
+
+            if skip_stale_node(self, job, node):
+                return
         snapshot = json.loads(self.artifacts.read(node["dataset_artifact"]))
         from .scores import decode, encode
 
@@ -193,19 +218,26 @@ class Research:
         cached = self.db.rows("SELECT artifact FROM research_score_cache WHERE id=%s", (cache_key,))
         verified_reuse = False
         if saved is None and not cached:
+            protocol_match = (
+                "(r.protocol->>'seed')::int=%s AND r.protocol->>'version' IN ('recent100-tail10-random-v2','recent100-tail50-tail10-hits-v4')"
+                if hit_mode
+                else "r.protocol->>'digest'=%s"
+            )
             cached = self.db.rows(
                 """SELECT n.evaluation->'scores' AS artifact FROM research_nodes n
                 JOIN research_campaigns r ON r.id=n.campaign_id JOIN datasets ds ON ds.id=r.dataset_id
                 LEFT JOIN numeric_releases nr ON nr.release_digest=r.config->>'code_digest'
                 JOIN artifact_catalog ac ON ac.path=n.evaluation->'scores'->>'path' AND ac.state!='DELETED'
                 WHERE coalesce(r.config->>'numeric_digest',nr.numeric_digest)=%s AND n.spec=%s
-                AND r.protocol->>'digest'=%s AND ds.artifact->>'sha256'=%s
+                AND """
+                + protocol_match
+                + """ AND ds.artifact->>'sha256'=%s
                 AND (r.config->>'numeric_threads')::int=%s AND n.evaluation IS NOT NULL
                 ORDER BY n.completed_at DESC LIMIT 1""",
                 (
                     numeric_identity(),
                     Jsonb(node["spec"]),
-                    node["protocol"]["digest"],
+                    node["protocol"]["seed"] if hit_mode else node["protocol"]["digest"],
                     node["dataset_artifact"]["sha256"],
                     node["config"].get("numeric_threads", 2),
                 ),
@@ -213,7 +245,15 @@ class Research:
             verified_reuse = bool(cached)
         if saved is None and cached:
             saved = decode(self.artifacts.read(cached[0]["artifact"]))
-            saved["identity"] = digest([node["spec"], node["protocol"]["digest"], snapshot["cutoff"]])
+            if hit_mode:
+                wanted = set(node["protocol"]["origins"])
+                saved["rows"] = sorted(
+                    (r for r in saved["rows"] if r["origin"] in wanted), key=lambda r: r["origin"]
+                )
+                if [r["origin"] for r in saved["rows"]] != node["protocol"]["origins"]:
+                    saved, cached, verified_reuse = None, [], False
+            if saved is not None:
+                saved["identity"] = digest([node["spec"], node["protocol"]["digest"], snapshot["cutoff"]])
         parent = (
             self.db.rows("SELECT * FROM research_nodes WHERE id=%s", (node["parent_id"],))
             if node["parent_id"]
@@ -252,13 +292,26 @@ class Research:
         parent_scores = (
             decode(self.artifacts.read(parent[0]["evaluation"]["scores"]))["rows"] if parent else None
         )
-        verdict = (
-            review(parent_scores, scores, node["protocol"])
-            if parent
-            else {"verdict": "ACCEPT_BASELINE", "protocol_digest": node["protocol"]["digest"]}
-        )
+        business = None
+        if hit_mode:
+            from .research_hits import measure, public
+            from .research_hits import review as review_hits
+
+            business = measure(scores, snapshot, node["protocol"])
+            verdict = (
+                review_hits(measure(parent_scores, snapshot, node["protocol"]), business, node["protocol"])
+                if parent
+                else {"verdict": "ACCEPT_BASELINE", "protocol_digest": node["protocol"]["digest"]}
+            )
+        else:
+            verdict = (
+                review(parent_scores, scores, node["protocol"])
+                if parent
+                else {"verdict": "ACCEPT_BASELINE", "protocol_digest": node["protocol"]["digest"]}
+            )
         extra = bool(
             parent
+            and node["protocol"]["reserve"]
             and verdict["verdict"] != "PRUNE_REGRESSION"
             and not include_reserve
             and len(parent_scores) == len(node["protocol"]["origins"]) + len(node["protocol"]["reserve"])
@@ -311,14 +364,25 @@ class Research:
             "summary": summary(scores, node["protocol"]["origins"]),
             "recent100": summary(scores, node["protocol"]["recent"]),
             "recent10": summary(scores, node["protocol"].get("recent10", node["protocol"]["recent"][-10:])),
-            "random_historical": summary(scores, node["protocol"]["random_historical"]),
+            "random_historical": summary(scores, node["protocol"]["random_historical"])
+            if node["protocol"]["random_historical"]
+            else None,
             "protocol_digest": node["protocol"]["digest"],
             "execution": execution,
             "evidence": node["protocol"]["evidence"],
         }
+        if hit_mode:
+            evaluation["recent50"] = summary(scores, node["protocol"]["recent50"])
+            evaluation["business"] = public(business)
+            execution["score_reuse_scope"] = (
+                "exact100_origins_same_data_seed_math_threads;hit_metrics_recomputed"
+                if cached
+                else "new_prior_fits"
+            )
         pulse()
         with self.db.pool.connection() as c, c.transaction():
             self.db.fence(c, job)
+            c.execute("SELECT id FROM research_campaigns WHERE id=%s FOR UPDATE", (node["campaign_id"],))
             c.execute(
                 "INSERT INTO research_score_cache(id,artifact) VALUES(%s,%s) ON CONFLICT(id) DO UPDATE SET artifact=excluded.artifact,created_at=now()",
                 (cache_key, Jsonb(score_ref)),
@@ -371,6 +435,13 @@ class Research:
         self.artifacts.cleanup_checkpoints(job["id"])
 
     def plan(self, job, context, pulse):
+        if (
+            context["config"].get("proposal_policy") == "candidates-v2"
+            and context["config"]["planner"] == "local"
+        ):
+            from .research_proposals import plan_batch
+
+            return plan_batch(self, job, context, pulse)
         campaign = self.db.rows("SELECT * FROM research_campaigns WHERE id=%s", (context["campaign_id"],))[0]
         nodes = self.db.rows(
             "SELECT * FROM research_nodes WHERE campaign_id=%s ORDER BY created_at", (campaign["id"],)

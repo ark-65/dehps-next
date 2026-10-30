@@ -332,6 +332,8 @@ def propose(campaign, nodes, pulse, db, artifacts, job):
 
 def use_local_model(db, campaign, nodes):
     """Revisit local reasoning as evidence accumulates; usage never disables assistance."""
+    if campaign["config"].get("proposal_policy") == "candidates-v2":
+        return True
     if db.rows(
         "SELECT 1 FROM research_model_calls WHERE state='FAILED' AND created_at>now()-interval '5 minutes' LIMIT 1"
     ):
