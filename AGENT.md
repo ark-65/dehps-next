@@ -28,3 +28,6 @@ Owner instruction, 2026-10-29. Applies to all future work in this repository.
 - Latest owner policy 2026-10-29: local inference has no consumption billing or daily capacity/call/token quota. Display provider-reported input/output tokens only; preserve missing-count flags and historical receipts. Keep hardware8/4/1, memory/storage/concurrency safeguards and real validation; never use historical spend or call totals to disable Qwen or research.
 
 - Final recommendations and missing-coverage settlement use effective_forecast_selections. Prior17:00 mail remains immutable; PRE_FINAL is independently deduplicated. Never relax eligibility or fabricate a recommendation to meet the clock.
+
+- Owner2026-10-30 retired legacy DEHPS services, timers, containers and startup paths; code/data/models remain archived. Do not re-enable legacy execution.
+- Latest CPU policy2026-10-30 supersedes hardware8/4/1: Next uses its dedicated dehpsnext.slice with CPU0-19; ordinary host system/user/init groups use LP-E CPU20-21. Select training/inference thread counts from actual frozen-fit and Qwen benchmarks, not CPU occupancy. Finish frozen campaigns before changing numeric threads; new campaigns record the selected CPU pool and threads and revalidate under that numeric contract. Preserve mail timing, token-only observation and memory/storage guards.

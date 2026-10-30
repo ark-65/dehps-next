@@ -4,7 +4,7 @@
   no new unit tests and no useless CI. Use actual isolated runtime acceptance instead.
 
 - Work only in this repository and its explicitly named Next containers/database.
-- Never edit, delete, restart or mount legacy DEHPS code, data or services.
+- Legacy DEHPS was retired by the owner on2026-10-30. Preserve its archived code/data/models and do not re-enable its services. Do not edit, delete or mount legacy code or data.
 - The owner authorizes read-only history export from the legacy draw table into Next.
   Use SELECT-only transactions with limits/timeouts; no legacy training-table reads or writes.
 - Keep the v1.1 architecture under docs/architecture. P0-P3 include learning, bounded research,

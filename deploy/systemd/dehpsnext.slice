@@ -1,0 +1,11 @@
+[Unit]
+Description=DEHPS Next CPU0-19 research and local inference pool
+Before=docker.service
+
+[Slice]
+AllowedCPUs=0-19
+CPUAccounting=yes
+MemoryAccounting=yes
+
+[Install]
+WantedBy=slices.target

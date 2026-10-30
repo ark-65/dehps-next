@@ -1,16 +1,21 @@
 name: dehps-next-p0p1
 x-app: &app
   image: dehps-next:p0p1
+  cpuset: "0-19"
+  cgroup_parent: dehpsnext.slice
   build: .
   env_file: .env
   environment: &app-env
     DEHPS_NEXT_TRAINING_THREADS: "8"
+    DEHPS_NEXT_INFERENCE_THREADS: "12"
+    DEHPS_NEXT_INFERENCE_BUSY_THREADS: "4"
+    DEHPS_NEXT_CPU_POOL: "0-19"
     DEHPS_NEXT_RUNTIME: /app/runtime/application
     DEHPS_NEXT_THREADS: "2"
     DEHPS_NEXT_QUOTA_MIB: "1024"
-    OPENBLAS_NUM_THREADS: "2"
-    OMP_NUM_THREADS: "2"
-    MKL_NUM_THREADS: "2"
+    OPENBLAS_NUM_THREADS: "1"
+    OMP_NUM_THREADS: "1"
+    MKL_NUM_THREADS: "1"
     DEHPS_NEXT_RESEARCH_URL: http://next-inference:11434
     DEHPS_NEXT_RESEARCH_MODEL: qwen3:1.7b
   volumes:
@@ -33,6 +38,8 @@ x-app: &app
 services:
   database:
     image: postgres:17
+    cpuset: "0-19"
+    cgroup_parent: dehpsnext.slice
     environment:
       POSTGRES_USER: dehps_next
       POSTGRES_DB: dehps_next
@@ -60,9 +67,9 @@ services:
     environment:
       <<: *app-env
       DEHPS_NEXT_THREADS: "8"
-      OPENBLAS_NUM_THREADS: "8"
-      OMP_NUM_THREADS: "8"
-      MKL_NUM_THREADS: "8"
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
   planner:
     <<: *app
     command: [worker, --role, planning]
