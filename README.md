@@ -198,3 +198,6 @@ docker compose -f compose.yaml -f compose.inference.yaml up -d source reporter w
 ## 2026-10-30 全GPU推理
 
 实测后默认Qwen经Intel Arc Vulkan全29层卸载，CPU辅助最多4；预测训练仍为CPU8、规划1，两个LP-E核继续留给系统。固定同量工作块重复对照快34%–54%；真实3节点活动127.24→119.64秒，但GPU选择了不同、更重的分支，不能把两者当成严格同量加速。温度只记录，不作为选型门槛。[完整验收与显式CPU回退](docs/acceptance/gpu-qwen-20261030.md)。此更新替代上方默认CPU空闲12/繁忙4方案；原CPU方案保留为显式回退。
+
+
+GPU启用后的[训练CPU扩容复测](docs/acceptance/training-gpu-scaling-20261030.md)比较8/12/16/20线程，保留训练8；GPU并发时12线程训练更慢、整个周期没有可用加速，未为填满CPU而升配。
