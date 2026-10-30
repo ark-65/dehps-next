@@ -26,18 +26,43 @@ def features(spec, parent_summary):
 
 
 def train_policy(db, artifacts, campaign, job):
-    examples = db.rows("""SELECT n.id,n.spec,n.evaluation,p.evaluation AS parent_evaluation
+    from .release import numeric_identity
+
+    contract = digest(
+        [
+            campaign["dataset_id"],
+            campaign["protocol"]["digest"],
+            numeric_identity(),
+            campaign["config"]["numeric_threads"],
+        ]
+    )
+    examples = db.rows(
+        """SELECT n.id,n.spec,n.evaluation,p.evaluation AS parent_evaluation
         FROM research_nodes n JOIN research_nodes p ON p.id=n.parent_id
+        JOIN research_campaigns r ON r.id=n.campaign_id
         WHERE n.evaluation IS NOT NULL AND p.evaluation IS NOT NULL
-        ORDER BY n.completed_at DESC LIMIT 128""")
+          AND r.dataset_id=%s AND r.protocol->>'digest'=%s
+          AND r.config->>'numeric_digest'=%s AND (r.config->>'numeric_threads')::int=%s
+        ORDER BY n.completed_at DESC,n.id LIMIT 128""",
+        (
+            campaign["dataset_id"],
+            campaign["protocol"]["digest"],
+            numeric_identity(),
+            campaign["config"]["numeric_threads"],
+        ),
+    )
     examples.reverse()
     torch.manual_seed(1729)
     model = nn.Sequential(nn.Linear(12, 16), nn.Tanh(), nn.Linear(16, 1))
-    previous = db.rows("SELECT artifact FROM research_policy_versions ORDER BY id DESC LIMIT 1")
+    previous = db.rows(
+        "SELECT artifact FROM research_policy_versions WHERE metrics->>'feedback_contract'=%s ORDER BY id DESC LIMIT 1",
+        (contract,),
+    )
     if previous:
         model.load_state_dict(load_torch(artifacts.read(previous[0]["artifact"]))["model"])
     before = weight_digest(model)
     metrics = {
+        "feedback_contract": contract,
         "seed": 1729,
         "parent_policy": previous[0]["artifact"] if previous else None,
         "examples": len(examples),
@@ -53,11 +78,21 @@ def train_policy(db, artifacts, campaign, job):
         targets = []
         for e in examples:
             parent, child = e["parent_evaluation"]["summary"], e["evaluation"]["summary"]
-            reward = (
-                parent["blue_log_loss"]
-                - child["blue_log_loss"]
-                - 5 * max(child["red_brier"] - parent["red_brier"], 0)
-            )
+            if campaign["protocol"]["version"] == "recent100-tail50-tail10-hits-v4":
+                p = e["parent_evaluation"]["business"]["windows"]
+                c = e["evaluation"]["business"]["windows"]
+                deltas = {
+                    k: [c[k][m] - p[k][m] for m in ("red5_rate", "blue_rate")]
+                    for k in ("recent", "recent50", "recent10")
+                }
+                reward = sum(deltas["recent"]) - sum(max(-v, 0) for values in deltas.values() for v in values)
+                metrics["reward_contract"] = "incremental_paired_red5_blue_rates;penalize_nested_declines"
+            else:
+                reward = (
+                    parent["blue_log_loss"]
+                    - child["blue_log_loss"]
+                    - 5 * max(child["red_brier"] - parent["red_brier"], 0)
+                )
             targets.append(max(-5, min(5, reward)))
         y = torch.tensor(targets).reshape(-1, 1)
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01)

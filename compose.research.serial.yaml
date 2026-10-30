@@ -1,0 +1,13 @@
+# Finish the frozen campaign before switching. Keep deduplication, new feedback,
+# chronological100/50/10 validation, GPU inference and17:00 report policy.
+x-serial-research: &serial-research
+  DEHPS_NEXT_RESEARCH_AGENT: candidates-v2
+  DEHPS_NEXT_RESEARCH_PIPELINE_DEPTH: "1"
+  DEHPS_NEXT_RESEARCH_VALIDATION: recent-windows-v4
+services:
+  worker: {environment: *serial-research}
+  planner: {environment: *serial-research}
+  steward: {environment: *serial-research}
+  source: {environment: *serial-research}
+  reporter: {environment: *serial-research}
+  api: {environment: *serial-research}

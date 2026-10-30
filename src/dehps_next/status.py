@@ -50,6 +50,9 @@ def get_status(db, artifacts):
         "runtime_policy": {
             "local_billing": False,
             "usage_admission_limits": False,
+            "research_agent": db.settings.research_agent,
+            "research_pipeline_depth": db.settings.research_pipeline_depth,
+            "research_validation": db.settings.research_validation,
             "training_threads_per_origin": db.settings.training_threads,
             "origin_processes": db.settings.origin_processes,
             "training_cpus": min(20, db.settings.training_threads * db.settings.origin_processes),

@@ -20,6 +20,9 @@ class Settings:
     cpu_pool: str = "0-19"
     inference_backend: str = "cpu"
     origin_processes: int = 1
+    research_agent: str = "legacy"
+    research_pipeline_depth: int = 1
+    research_validation: str = "recent-random-v2"
 
     @classmethod
     def from_env(cls):
@@ -52,7 +55,18 @@ class Settings:
             cpu_pool=os.getenv("DEHPS_NEXT_CPU_POOL", "0-19"),
             inference_backend=os.getenv("DEHPS_NEXT_INFERENCE_BACKEND", "cpu"),
             origin_processes=int(os.getenv("DEHPS_NEXT_ORIGIN_PROCESSES", "1")),
+            research_agent=os.getenv("DEHPS_NEXT_RESEARCH_AGENT", "legacy"),
+            research_pipeline_depth=int(os.getenv("DEHPS_NEXT_RESEARCH_PIPELINE_DEPTH", "1")),
+            research_validation=os.getenv("DEHPS_NEXT_RESEARCH_VALIDATION", "recent-random-v2"),
         )
+        if result.research_validation not in ("recent-random-v2", "recent-windows-v4"):
+            raise ValueError("Unknown frozen validation policy")
+        if result.research_agent not in ("legacy", "candidates-v2"):
+            raise ValueError("Unknown research proposal policy")
+        if result.research_pipeline_depth not in (1, 2):
+            raise ValueError("Research queue must have depth1 or2")
+        if result.research_agent == "legacy" and result.research_pipeline_depth != 1:
+            raise ValueError("The legacy controller supports serial planning only")
         if not 1 <= result.origin_processes <= 8:
             raise ValueError("Expected1..8 isolated origin fitters")
         if result.origin_processes > 1 and result.training_threads not in (1, 2, 4, 8):

@@ -20,7 +20,12 @@ LOOP = "mail-validated-forward"
 
 def assess(rows, protocol, decision, snapshot=None):
     """Fixed replay guards; development eligibility is never a 50% capability declaration."""
-    if protocol.get("version") != "recent100-tail10-random-v2" or len(protocol["recent"]) != 100:
+    from .research_hits import VERSION as HIT_VERSION
+
+    if (
+        protocol.get("version") not in ("recent100-tail10-random-v2", HIT_VERSION)
+        or len(protocol["recent"]) != 100
+    ):
         raise DomainError("OLD_VALIDATION_PROTOCOL", "Require frozen recent100/tail10 protocol")
     if digest({k: v for k, v in protocol.items() if k != "digest"}) != protocol["digest"]:
         raise DomainError("VALIDATION_PROTOCOL_CORRUPT", "Frozen protocol checksum differs")
@@ -64,7 +69,12 @@ def assess(rows, protocol, decision, snapshot=None):
         or len(rows) != len({r["origin"] for r in rows})
     ):
         raise DomainError("INCOMPLETE_VALIDATION", "Every frozen origin must have exactly one score")
-    groups = {k: summary(rows, protocol[k]) for k in ("recent", "recent10", "random_historical")}
+    keys = (
+        ("recent", "recent50", "recent10")
+        if protocol["version"] == HIT_VERSION
+        else ("recent", "recent10", "random_historical")
+    )
+    groups = {k: summary(rows, protocol[k]) for k in keys}
     # Same pre-registered tolerances for every candidate; ten points are a guard, not reliable proof.
     reasons = []
     if decision["verdict"] not in ("ACCEPT_BASELINE", "ACCEPT_IMPROVEMENT"):
@@ -75,7 +85,7 @@ def assess(rows, protocol, decision, snapshot=None):
             reasons.append(key.upper() + "_BLUE_BASELINE_REGRESSION")
         if metrics["red_brier"] > (6 / 33) * (1 - 6 / 33) + 0.01:
             reasons.append(key.upper() + "_RED_BASELINE_REGRESSION")
-    return {
+    result = {
         "eligible": not reasons,
         "reasons": reasons,
         "windows": groups,
@@ -86,6 +96,11 @@ def assess(rows, protocol, decision, snapshot=None):
         "goal50": "UNPROVEN_DEVELOPMENT_REPLAY_CANNOT_ESTABLISH_FORWARD_CAPABILITY",
         "evidence": protocol["evidence"],
     }
+    if protocol["version"] == HIT_VERSION and snapshot is not None:
+        from .research_hits import measure, public
+
+        result["business"] = public(measure(rows, snapshot, protocol))
+    return result
 
 
 class Forecast:
@@ -109,6 +124,14 @@ class Forecast:
             if reference
             else (code_identity(), latest)
         )
+        from .research_hits import VERSION as HIT_VERSION
+
+        version = (
+            HIT_VERSION
+            if self.db.settings.research_validation == "recent-windows-v4"
+            else "recent100-tail10-random-v2"
+        )
+        values = (*values, version)
         boundary = " AND n.completed_at<=%s" if cutoff is not None else ""
         if not reference:
             boundary += " AND n.status IN ('ACCEPT_BASELINE','ACCEPT_IMPROVEMENT')"
@@ -121,7 +144,7 @@ class Forecast:
             WHERE """
             + contract
             + """ AND ds.through_issue=%s
-              AND r.protocol->>'version'='recent100-tail10-random-v2'
+              AND r.protocol->>'version'=%s
               AND n.anchor IS NOT NULL
               AND EXISTS(SELECT 1 FROM artifact_catalog ac WHERE ac.path=n.evaluation->'scores'->>'path' AND ac.state!='DELETED')
               AND EXISTS(SELECT 1 FROM artifact_catalog ac WHERE ac.path=n.evaluation->'publication_anchor'->>'path' AND ac.state!='DELETED')
@@ -137,6 +160,17 @@ class Forecast:
                 snapshots[node["dataset_id"]] = json.loads(self.artifacts.read(node["data_artifact"]))
             gate = assess(rows, node["protocol"], node["decision"], snapshots[node["dataset_id"]])
             candidates.append((node, gate))
+        if version == HIT_VERSION:
+            return sorted(
+                candidates,
+                key=lambda pair: (
+                    not pair[1]["eligible"],
+                    pair[0]["status"] not in ("ACCEPT_BASELINE", "ACCEPT_IMPROVEMENT"),
+                    -sum(pair[1]["business"]["windows"]["recent"][k] for k in ("red5_rate", "blue_rate")),
+                    -pair[1]["business"]["windows"]["recent"]["red5_rate"],
+                    pair[1]["windows"]["recent"]["blue_log_loss"],
+                ),
+            )
         return sorted(
             candidates,
             key=lambda pair: (not pair[1]["eligible"], pair[1]["windows"]["recent"]["blue_log_loss"]),
