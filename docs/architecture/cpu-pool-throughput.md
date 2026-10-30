@@ -41,3 +41,5 @@
 19:00最终邮件及19:30内部发送截止保持原计划。本机用量只观察真实token，没有每日容量秒、调用或token用量截停。内存、磁盘、并发、租约和防卡死保护继续生效；没有新增单元测试或CI。
 
 宿主持久化补充：system.slice/user.slice的set-property文件位于/etc/systemd/system.control；init.scope属于瞬态单元，属性可能仅落在/run。因此prepare安装dehpsnext-cpu-reservation.service，apply启用并立即执行；开机在Docker之前重新设置init.scope为20-21。restore-host同时禁用这个启动单元，避免回退后再次施加旧策略。
+
+GPU启用后的[CPU扩容复测](../acceptance/training-gpu-scaling-20261030.md)保留8线程/8CPU训练：12/16/20没有证明统一升配的收益。全GPU并发两档完整块均约58.5秒，8线程训练阶段29.32拟合/秒优于12线程25.75；差异不改变CPU分区与原数值合同。
