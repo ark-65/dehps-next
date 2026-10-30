@@ -1,8 +1,14 @@
 """Bounded neural experiments. A fitter receives only the prior prefix, never target labels."""
 
+import atexit
 import hashlib
 import math
+import multiprocessing
+import os
+import signal
+import threading
 import time
+from collections import deque
 
 import numpy as np
 import torch
@@ -163,8 +169,127 @@ def fit_prior(prior, spec, seed, pulse, initial=None):
     return red, blue, payload
 
 
+_ORIGIN_CANCEL = None
+_ORIGIN_POOL = None
+_ORIGIN_POOL_KEY = None
+_ORIGIN_PARENT_CANCEL = None
+
+
+def _origin_initializer(threads, cancel):
+    global _ORIGIN_CANCEL
+    _ORIGIN_CANCEL = cancel
+    # Spawn gives every fitter its own RNG and parameter/optimizer state.
+    signal.signal(signal.SIGTERM, signal.SIG_DFL)
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    torch.set_num_threads(threads)
+    torch.set_num_interop_threads(1)
+
+
+def _fit_origin(prior, spec, seed):
+    def pulse():
+        if _ORIGIN_CANCEL.is_set():
+            raise DomainError("ORIGIN_CANCELLED", "Parent ended the origin batch")
+
+    try:
+        red, blue, trained = fit_prior(prior, spec, seed, pulse)
+    except DomainError as exc:
+        # DomainError has a custom constructor; transmit data instead of unpickling exceptions.
+        return {"error": exc.code, "message": str(exc)}
+    return (
+        red,
+        blue,
+        {key: trained[key] for key in ("weight_digest", "initial_weight_digest", "mathematical_digest")},
+    )
+
+
+def close_origin_pool():
+    global _ORIGIN_POOL, _ORIGIN_POOL_KEY, _ORIGIN_PARENT_CANCEL
+    if _ORIGIN_POOL is None:
+        return
+    pool, cancel = _ORIGIN_POOL, _ORIGIN_PARENT_CANCEL
+    _ORIGIN_POOL = _ORIGIN_POOL_KEY = _ORIGIN_PARENT_CANCEL = None
+    cancel.set()
+    watchdog = threading.Timer(5, lambda: os._exit(70))
+    watchdog.daemon = True
+    watchdog.start()
+    try:
+        pool.close()
+        pool.join()
+    finally:
+        watchdog.cancel()
+
+
+atexit.register(close_origin_pool)
+
+
+def _origin_pool(processes, threads):
+    global _ORIGIN_POOL, _ORIGIN_POOL_KEY, _ORIGIN_PARENT_CANCEL
+    if _ORIGIN_POOL_KEY != (processes, threads):
+        close_origin_pool()
+        context = multiprocessing.get_context("spawn")
+        _ORIGIN_PARENT_CANCEL = context.Event()
+        _ORIGIN_POOL = context.Pool(
+            processes, initializer=_origin_initializer, initargs=(threads, _ORIGIN_PARENT_CANCEL)
+        )
+        _ORIGIN_POOL_KEY = (processes, threads)
+    return _ORIGIN_POOL
+
+
+def _origin_results(matrix, spec, protocol, origins, pulse, processes, threads):
+    if processes == 1:
+        for origin in origins:
+            pulse()
+            yield origin, fit_prior(matrix[:origin], spec, protocol["seed"] + origin, pulse)
+        return
+    if not origins:
+        return
+    # Only prior prefixes cross the process boundary. Labels stay in the parent scorer.
+    pool = _origin_pool(processes, threads)
+    pending = deque()
+    cursor = iter(origins)
+
+    def submit():
+        origin = next(cursor, None)
+        if origin is not None:
+            pulse()
+            pending.append(
+                (origin, pool.apply_async(_fit_origin, (matrix[:origin], spec, protocol["seed"] + origin)))
+            )
+
+    complete = False
+    try:
+        for _ in range(processes):
+            submit()
+        while pending:
+            origin, future = pending.popleft()
+            while not future.ready():
+                pulse()
+                future.wait(0.02)
+            pulse()
+            value = future.get()
+            if isinstance(value, dict) and "error" in value:
+                raise DomainError(value["error"], value["message"])
+            yield origin, value
+            submit()
+        complete = True
+    finally:
+        if not complete:
+            close_origin_pool()
+        # Completed pools stay idle for later nodes; pause/lease loss always closes them.
+
+
 def compute_node(
-    snapshot, spec, protocol, pulse, checkpoint, saved=None, initial=None, seconds=600, include_reserve=True
+    snapshot,
+    spec,
+    protocol,
+    pulse,
+    checkpoint,
+    saved=None,
+    initial=None,
+    seconds=600,
+    include_reserve=True,
+    processes=1,
+    threads=None,
 ):
     matrix = vectors(snapshot["rows"])
     all_origins = sorted(protocol["origins"]) + (sorted(protocol["reserve"]) if include_reserve else [])
@@ -178,45 +303,70 @@ def compute_node(
             raise DomainError("RESEARCH_CHECKPOINT_GAP", "Research cursor is not a prefix")
     restored_origins = len(rows)
     start = time.monotonic()
-    for position in range(len(rows), len(all_origins)):
-        pulse()
-        if time.monotonic() - start > seconds:
-            raise DomainError("RESEARCH_TIME_BUDGET", "Per-attempt compute budget exhausted")
-        origin = all_origins[position]
-        history = snapshot["rows"][:origin]
-        if timestamp(history[-1]["available_at"]) >= timestamp(snapshot["rows"][origin]["draw_at"]):
+    if not 1 <= processes <= 8:
+        raise DomainError("RESEARCH_PARALLELISM_LIMIT", "Expected one to eight isolated origin fitters")
+    threads = threads or torch.get_num_threads()
+    if threads != torch.get_num_threads():
+        raise DomainError("NUMERIC_THREADS_CHANGED", "Parent/child fitter threads must match frozen contract")
+    if processes > 1 and threads not in (1, 2, 4, 8):
+        raise DomainError(
+            "PARALLEL_THREADS_UNAUDITED", "Parallel origin execution requires an audited thread count"
+        )
+    remaining = all_origins[len(rows) :]
+    # Verify the legal boundary before submitting any prefix to a child.
+    for origin in remaining:
+        if timestamp(snapshot["rows"][origin - 1]["available_at"]) >= timestamp(
+            snapshot["rows"][origin]["draw_at"]
+        ):
             raise DomainError(
                 "RESEARCH_FUTURE_LEAK", "A label is not prior-available at its evaluation origin"
             )
-        red, blue, trained = fit_prior(matrix[:origin], spec, protocol["seed"] + origin, pulse)
-        actual = snapshot["rows"][origin]
-        red_target = np.zeros(33)
-        red_target[np.array(actual["red"]) - 1] = 1
-        rows.append(
-            {
-                "origin": origin,
-                "issue": actual["issue"],
-                "training_through": history[-1]["issue"],
-                "blue_log_loss": -math.log(max(float(blue[actual["blue"] - 1]), 1e-12)),
-                "blue_hit": int(int(blue.argmax()) + 1 == actual["blue"]),
-                "red_brier": float(np.mean((red - red_target) ** 2)),
-                "blue_probabilities": blue.tolist(),
-                "red_probabilities": red.tolist(),
-                "weight_digest": trained["weight_digest"],
-                "parameter_updated": trained["weight_digest"] != trained["initial_weight_digest"],
-                "mathematical_digest": trained["mathematical_digest"],
-            }
-        )
-        if len(rows) % 8 == 0 or len(rows) == len(all_origins):
+
+    def bounded_pulse():
+        pulse()
+        if time.monotonic() - start > seconds:
+            raise DomainError("RESEARCH_TIME_BUDGET", "Per-attempt compute budget exhausted")
+
+    results = _origin_results(matrix, spec, protocol, remaining, bounded_pulse, processes, threads)
+    try:
+        for origin, (red, blue, trained) in results:
+            history = snapshot["rows"][:origin]
+            actual = snapshot["rows"][origin]
+            red_target = np.zeros(33)
+            red_target[np.array(actual["red"]) - 1] = 1
+            rows.append(
+                {
+                    "origin": origin,
+                    "issue": actual["issue"],
+                    "training_through": history[-1]["issue"],
+                    "blue_log_loss": -math.log(max(float(blue[actual["blue"] - 1]), 1e-12)),
+                    "blue_hit": int(int(blue.argmax()) + 1 == actual["blue"]),
+                    "red_brier": float(np.mean((red - red_target) ** 2)),
+                    "blue_probabilities": blue.tolist(),
+                    "red_probabilities": red.tolist(),
+                    "weight_digest": trained["weight_digest"],
+                    "parameter_updated": trained["weight_digest"] != trained["initial_weight_digest"],
+                    "mathematical_digest": trained["mathematical_digest"],
+                }
+            )
+            if len(rows) % 8 == 0 or len(rows) == len(all_origins):
+                checkpoint({"identity": identity, "rows": rows})
+    except DomainError as exc:
+        if exc.code.startswith("YIELD_") or exc.code == "INTERRUPTED":
+            # Flush the completed prefix without asking the pause gate to permit more training.
             checkpoint({"identity": identity, "rows": rows})
+        raise
+    finally:
+        results.close()
+    bounded_pulse()
     # A current anchor is never reused for historical-origin validation.
-    _, _, anchor = fit_prior(matrix, spec, protocol["seed"], pulse, initial=initial)
+    _, _, anchor = fit_prior(matrix, spec, protocol["seed"], bounded_pulse, initial=initial)
     anchor["through_issue"] = snapshot["rows"][-1]["issue"]
     publication = anchor
     if anchor["inherited"]:
         # Historical scores start fresh at every origin. Publish that same training procedure,
         # while retaining the inherited optimizer/RNG anchor for the research branch itself.
-        _, _, publication = fit_prior(matrix, spec, protocol["seed"], pulse)
+        _, _, publication = fit_prior(matrix, spec, protocol["seed"], bounded_pulse)
         publication["through_issue"] = anchor["through_issue"]
     return (
         rows,
@@ -224,6 +374,9 @@ def compute_node(
         encode_torch(publication),
         {
             "seconds_this_attempt": round(time.monotonic() - start, 4),
+            "origin_processes": processes,
+            "threads_per_origin": threads,
+            "origin_cpu_limit": min(20, processes * threads),
             "resumed_origins": restored_origins,
             "origin_fits_executed_this_attempt": len(all_origins) - restored_origins,
             "gradient_steps_executed_this_attempt": (

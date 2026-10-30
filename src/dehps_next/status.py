@@ -35,9 +35,14 @@ def get_status(db, artifacts):
             "full_branch_comparison_and_protected_holdout": "RESEARCH_CAMPAIGNS_SEPARATE;PROTECTED_HOLDOUT_PENDING",
         }
     from .local_usage import summary
+    from .training_window import status as training_window
+
+    with db.pool.connection() as c:
+        window = training_window(c)
 
     return {
         "token_usage": summary(db),
+        "training_window": window,
         "code_digest": code_identity(),
         "mail_schedule": db.rows("SELECT payload FROM report_state"),
         "mail_delivery": db.rows("SELECT state,count(*) AS n FROM mail_deliveries GROUP BY state"),
@@ -45,7 +50,9 @@ def get_status(db, artifacts):
         "runtime_policy": {
             "local_billing": False,
             "usage_admission_limits": False,
-            "training_cpus": db.settings.training_threads,
+            "training_threads_per_origin": db.settings.training_threads,
+            "origin_processes": db.settings.origin_processes,
+            "training_cpus": min(20, db.settings.training_threads * db.settings.origin_processes),
             "inference_cpus": db.settings.inference_threads,
             "inference_threads_when_compute_pending": db.settings.inference_busy_threads,
             "blas_threads": 1,

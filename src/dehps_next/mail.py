@@ -52,8 +52,13 @@ class Mail:
     def render(report):
         p = report["payload"]
         lines = [p["title"], "", *p["lines"]]
+        heading = (
+            "研究参考红球Top100 / 蓝球Top1（非正式合格推荐）"
+            if p.get("reference")
+            else "红球 Top100 / 唯一蓝球 Top1"
+        )
         if p.get("tickets"):
-            lines.extend(["", "红球 Top100 / 唯一蓝球 Top1"])
+            lines.extend(["", heading])
             lines.extend(
                 f"{i:03d}. {' '.join(f'{v:02d}' for v in red)} + {p['blue']:02d}"
                 for i, red in enumerate(p["tickets"], 1)
@@ -64,7 +69,7 @@ class Mail:
             f"<p>{html.escape(line)}</p>" for line in p["lines"]
         )
         if p.get("tickets"):
-            body += "<h3>红球 Top100 · 唯一蓝球 Top1</h3><table cellpadding='7' style='border-collapse:collapse;width:100%'><tr><th>序号</th><th>红球</th><th>蓝球</th></tr>"
+            body += f"<h3>{html.escape(heading)}</h3><table cellpadding='7' style='border-collapse:collapse;width:100%'><tr><th>序号</th><th>红球</th><th>蓝球</th></tr>"
             for i, red in enumerate(p["tickets"], 1):
                 body += f"<tr style='border-top:1px solid #ddd'><td>{i:03d}</td><td style='color:#b91c1c'>{' · '.join(f'{v:02d}' for v in red)}</td><td style='color:#1d4ed8'>{p['blue']:02d}</td></tr>"
             body += "</table>"

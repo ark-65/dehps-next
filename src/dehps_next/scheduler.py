@@ -40,11 +40,11 @@ class Scheduler:
                 "INSERT INTO loops(id,mode,config) VALUES(%s,%s,%s) RETURNING *", (name, mode, Jsonb(config))
             ).fetchone()
 
-    def expect(self, issue, draw_at, deadline):
+    def expect(self, issue, draw_at, deadline, at=None):
         draw_at, deadline = timestamp(draw_at), timestamp(deadline)
         if not isinstance(issue, str) or not issue.isdigit() or len(issue) != 7:
             raise DomainError("INVALID_TARGET", "Expected a seven-digit issue")
-        if not now() < deadline < draw_at:
+        if not (at or now()) < deadline < draw_at:
             raise DomainError("MISSED_DEADLINE", "Forward target must have a future deadline before draw")
         with self.db.pool.connection() as c, c.transaction():
             old = c.execute("SELECT * FROM targets WHERE issue=%s FOR UPDATE", (issue,)).fetchone()
@@ -98,7 +98,7 @@ class Scheduler:
                     self.state(c, loop["id"], "WAITING_FOR_LABEL")
             return
         if loop["id"] == "mail-forward" or loop["config"].get("externally_sealed"):
-            self.state(c, loop["id"], "WAITING_18_50_VALIDATED_SEAL")
+            self.state(c, loop["id"], "WAITING_17_00_PAUSE_REPORT")
             return
         completed = c.execute(
             "SELECT * FROM cycles WHERE loop_id=%s ORDER BY draw_at DESC,created_at DESC LIMIT 1",

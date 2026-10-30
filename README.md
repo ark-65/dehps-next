@@ -112,7 +112,7 @@ docker compose run --rm worker research-status --name research-001
 
 分支经过现有租约队列执行，保存配方、来源、模型/优化器/随机状态、分数、剪枝与恢复记录。
 规则规划器用于先验收执行链；达到节点预算即停止，不自动无限开新主题。
-研究节点的接受先变更研究指针；通过独立发布守卫后，才可在18:50–19:00选为当期邮件预测。
+研究节点的接受先变更研究指针；通过独立发布守卫后，才可在17:00暂停收尾后选为当期邮件预测。
 发布代码改变会阻止旧活动任务；兼容性审查后可用 `adopt-release --loop NAME --reason AUDIT_REASON`
 登记 P1 循环兼容升级。研究活动保持冻结代码身份，不提供静默升级。
 
@@ -160,7 +160,7 @@ docker compose -f compose.yaml -f compose.inference.yaml run --rm worker program
 `source`每15分钟直接同步福彩官方结果到Next独立数据库，不依赖旧库继续更新，不调用旧更新脚本。
 历史已授权导入3520期，旧库来源标签保留；重复官方核对不会改写原始事实或重复存整份回执。
 
-`reporter`常驻服务每30秒检查上海时区日程：持续训练并执行近100期、最近10期与随机历史回归；开奖日17:00开始准备、18:50–19:00才封存、19:00发送红球Top100/唯一蓝球Top1，
+`reporter`常驻服务每30秒检查上海时区日程：持续训练并执行近100期、最近10期与随机历史回归；开奖日17:00暂停训练并保存检查点，随即完成封存、发送红球Top100/唯一蓝球Top1，不等待19:00，
 无候选通过守卫则发送未通过状态，不能用提前验收记录替代；官方完整结果入库并结算后发送复盘。相同收件人/期号/报告类型有持久去重，重启不会重复发送。
 SMTP明确接收才记SENT；可能送达但回执丢失记UNKNOWN，不盲目重发。旧系统服务与定时任务保持不动。
 
@@ -190,7 +190,7 @@ docker compose -f compose.yaml -f compose.inference.yaml up -d source reporter w
 
 本地Qwen不按消耗计费，也不再按日容量秒、调用次数或token累计截停。保留8/4/1实时核数和内存/存储等保护，只通过 `dehps-next token-usage`、只读status及正常报告展示实际输入/输出token。旧额度记录仅为历史，budget-set退役；此政策覆盖上面的每日691200/24说明。[执行政策](docs/architecture/local-token-observability.md) · [真实Qwen验收](docs/acceptance/local-token-20261029.md)。
 
-当前邮件时间与旧17:00状态修正见 [晚间准备与最终报告](docs/architecture/evening-mail-schedule.md)。19:30是保守的内部发送截止，不是官方停售时间。每日容量秒/调用用量限额已由后续token观察政策取消。
+当前规则见 [并行历史起点与17:00报告](docs/architecture/parallel-origins-and-pause.md)。17:00开始暂停收尾，完成即发；19:30仅为故障兜底截止，不作为正常等待时间。每日容量秒/调用用量限额已由后续token观察政策取消。
 
 当前CPU分区采用Next独立CPU0-19、系统LP-E CPU20-21；训练与Qwen线程按真实吞吐选定，详见[CPU分区与吞吐](docs/architecture/cpu-pool-throughput.md)。部署前先执行管理员脚本prepare，所有Next容器迁入独立slice后才能apply系统限制；restore-host可恢复原系统CPU范围。
 
@@ -201,3 +201,5 @@ docker compose -f compose.yaml -f compose.inference.yaml up -d source reporter w
 
 
 GPU启用后的[训练CPU扩容复测](docs/acceptance/training-gpu-scaling-20261030.md)比较8/12/16/20线程，保留训练8；GPU并发时12线程训练更慢、整个周期没有可用加速，未为填满CPU而升配。
+
+当前历史起点训练使用8个独立进程，每个1个Torch线程，合计8 CPU配额；Qwen全GPU不变。完整固定工作量闭环83.76s→64.99s，耗时下降22.4%。数学与线程兼容性、暂停/恢复、报告Top100和结果复盘见 [实测验收](docs/acceptance/parallel-origins-20261030.md)。

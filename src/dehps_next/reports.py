@@ -13,16 +13,17 @@ from .scheduler import Scheduler
 
 
 class Reports:
-    def __init__(self, db, artifacts):
+    def __init__(self, db, artifacts, clock=None):
         self.db, self.artifacts = db, artifacts
         self.mail = Mail(db)
+        self.clock = clock or now
 
     def prepare(self, force=False):
         latest = self.db.rows("SELECT * FROM draws ORDER BY draw_at DESC LIMIT 1")
         if not latest:
             raise DomainError("NO_HISTORY", "No authoritative history to prepare forecast")
         target = next_target(latest[0])
-        clock = now().astimezone(ZONE)
+        clock = self.clock().astimezone(ZONE)
         if clock.date() > target["day"]:
             raise DomainError(
                 "SOURCE_STALE", "Previous scheduled draw has not arrived; do not guess a later issue"
@@ -30,7 +31,10 @@ class Reports:
         if clock.date() == target["day"] and target["prepare_time"] <= clock < target["deadline_time"]:
             # Preparation registers a schedule only. Even force cannot seal a forecast early.
             Scheduler(self.db, self.artifacts).expect(
-                target["issue"], target["draw_time"].isoformat(), target["deadline_time"].isoformat()
+                target["issue"],
+                target["draw_time"].isoformat(),
+                target["deadline_time"].isoformat(),
+                at=self.clock(),
             )
         return target
 
@@ -56,6 +60,7 @@ class Reports:
                 "当前为研究性推荐；开发回归通过不代表稳定优于随机，也不代表50%业务目标达标。此前提前生成的验收预测不作为这封正式报告的预测。",
                 f"唯一蓝球 Top1：{data['blue_top1']:02d}；红球 Top100 组合见下表。排序分数不等于中奖概率。",
                 f"已结算前向蓝球：{summary['hits']}/{summary['n']}（含覆盖缺口 {summary['missing']} 期）；50%目标未建立。研究方向改善不代表已优于随机基线。",
+                "训练日程：开奖日17:00暂停，收尾完成即封存发信，不等待19:00；本期完整官方结果核验后恢复。",
                 "数据使用 Next 独立数据库；初始历史来自授权导入，后续开奖直接同步福彩官方。",
             ],
         }
@@ -63,7 +68,7 @@ class Reports:
     def revision_lines(self, issue):
         if self.db.rows("SELECT 1 FROM forecast_schedule_reopenings WHERE issue=%s", (issue,)):
             return [
-                "日程修正：17:00是准备开始时间。此前17:00状态邮件保留为历史，本封是按新日程生成的最终报告。"
+                "日程修正：17:00是暂停及收尾开始时间，完成即发送。此前17:00状态邮件保留为历史，本封是按新日程生成的最终报告。"
             ]
         return []
 
@@ -82,15 +87,19 @@ class Reports:
 
     def tick(self, prepare_now=False, deliver=True):
         state = {
-            "at": now().isoformat(),
+            "at": self.clock().isoformat(),
             "calendar": CALENDAR,
             "mode": "MAIL_ONLY",
             "reason": "WAITING_SCHEDULE",
         }
+        from .training_window import status as training_window
+
+        with self.db.pool.connection() as c:
+            state["training_window"] = training_window(c, self.clock())
         target = None
         try:
             target = self.prepare(prepare_now)
-            clock = now().astimezone(ZONE)
+            clock = self.clock().astimezone(ZONE)
             state["phase"] = (
                 "FINAL_PREPARATION"
                 if target["prepare_time"] <= clock < target["seal_time"]
@@ -100,11 +109,22 @@ class Reports:
                 if target["mail_time"] <= clock < target["deadline_time"]
                 else "CONTINUOUS_RESEARCH"
             )
-            state["draft"] = Forecast(self.db, self.artifacts).preview()
-            if target["seal_time"] <= clock < target["mail_time"]:
-                state["seal"] = Forecast(self.db, self.artifacts).seal(target)
+            if (
+                target["day"] == clock.date()
+                and target["prepare_time"] <= clock < target["deadline_time"]
+                and self.db.rows(
+                    "SELECT 1 FROM jobs WHERE kind IN ('TRAIN','RESEARCH_EVALUATE','RESEARCH_PLAN') AND state='RUNNING' AND lease_until>now() LIMIT 1"
+                )
+            ):
+                raise DomainError(
+                    "WAITING_TRAINING_CHECKPOINT",
+                    "Waiting for the last bounded training/plan operation to pause",
+                )
+            state["draft"] = Forecast(self.db, self.artifacts, clock=self.clock).preview()
+            if target["seal_time"] <= clock < target["deadline_time"]:
+                state["seal"] = Forecast(self.db, self.artifacts, clock=self.clock).seal(target)
             if target["day"] == clock.date() and clock >= target["mail_time"]:
-                prediction = Forecast(self.db, self.artifacts).for_report(
+                prediction = Forecast(self.db, self.artifacts, clock=self.clock).for_report(
                     target,
                     {
                         "reason": "NO_VALIDATED_FORECAST_AT_FINAL_MAIL",
@@ -114,10 +134,8 @@ class Reports:
                     },
                 )
                 existing = self.db.rows(
-                    """SELECT id FROM mail_reports WHERE issue=%s AND
-                    (kind='PRE_FINAL' OR (kind='PRE' AND NOT EXISTS(
-                        SELECT 1 FROM forecast_schedule_reopenings WHERE issue=%s)))""",
-                    (target["issue"], target["issue"]),
+                    """SELECT id FROM mail_reports WHERE issue=%s AND kind='PRE_FINAL' """,
+                    (target["issue"],),
                 )
                 if existing:
                     state["reason"] = "PRE_REPORT_ALREADY_QUEUED"
@@ -137,19 +155,22 @@ class Reports:
                     state["reason"] = "PRE_REPORT_QUEUED_OR_ALREADY_SENT"
                 else:
                     state["reason"] = "NO_VALIDATED_FORECAST_AT_FINAL_MAIL"
+                    reference = Forecast(self.db, self.artifacts, clock=self.clock).reference(target)
                     self.mail.queue(
                         "PRE_FINAL",
                         target["issue"],
                         {
-                            "title": f"[DEHPS Next] {target['issue']}期最终研究与开奖前校验报告",
+                            **{k: reference[k] for k in ("blue", "tickets", "reference")},
+                            "title": f"[DEHPS Next] {target['issue']}期Top100研究参考与开奖前校验报告",
                             "send_deadline_utc": target["deadline_time"].astimezone(UTC).isoformat(),
                             "lines": [
                                 *self.revision_lines(target["issue"]),
-                                "19:00最终报告时仍没有完成合格候选封存，本期无通过门槛的正式推荐。",
+                                "17:00收尾时仍没有完成合格候选封存，本期无通过门槛的正式推荐。",
                                 f"近期100期、最近10期与随机历史回归状态：{state['draft']['state']}",
                                 f"校验未通过原因：{(state['draft'].get('gate') or {}).get('reasons', ['尚无完整验证结果'])}",
-                                "17:00开始准备复核，18:50–19:00封存，19:00发送；19:30为内部发送截止，提前于20:00关门时间。研究持续进行，不等待下一期开奖。",
+                                "17:00停止训练并收尾复核，完成即封存、发送，不等待19:00；19:30仅为故障兜底截止。本期官方开奖号核验后自动恢复训练。",
                                 "提前验收预测已保留为验收记录，不算本期正式报告；业务覆盖缺口如实计入。50%目标未建立。",
+                                *reference["lines"],
                             ],
                         },
                         "STATUS",
@@ -164,7 +185,7 @@ class Reports:
                 )
         except DomainError as exc:
             state["reason"] = exc.code
-            if now().astimezone(ZONE).hour >= 17:
+            if exc.code != "WAITING_TRAINING_CHECKPOINT" and self.clock().astimezone(ZONE).hour >= 17:
                 self.alert(exc.code, str(exc))
         for row in self.db.rows(
             """SELECT p.*,e.metrics,d.red,d.blue,d.issue AS actual_issue,ds.through_issue
@@ -177,6 +198,17 @@ class Reports:
         for missed in self.db.rows("""SELECT s.issue,d.red,d.blue FROM effective_forecast_selections s JOIN effective_draws d ON d.issue=s.issue
             WHERE s.state='MISSED' AND d.available_at<=now() AND d.draw_at<=now()
             AND NOT EXISTS(SELECT 1 FROM mail_reports r WHERE r.kind='POST' AND r.issue=s.issue) LIMIT 32"""):
+            reference_lines = []
+            prior = self.db.rows(
+                "SELECT payload FROM mail_reports WHERE kind='PRE_FINAL' AND issue=%s", (missed["issue"],)
+            )
+            if prior and prior[0]["payload"].get("reference"):
+                payload = prior[0]["payload"]
+                matches = [len(set(ticket) & set(missed["red"])) for ticket in payload["tickets"]]
+                reference_lines = [
+                    f"开奖前冻结研究参考蓝球{payload['blue']:02d}：{'命中' if payload['blue'] == missed['blue'] else '未命中'}；红球Top100最高命中{max(matches)}/6。",
+                    f"研究参考命中分布：{ {str(i): matches.count(i) for i in range(7)} }；该参考结果不混入合格推荐统计。",
+                ]
             self.mail.queue(
                 "POST",
                 missed["issue"],
@@ -186,6 +218,7 @@ class Reports:
                         f"官方开奖号：{missed['red']} + {missed['blue']:02d}",
                         "本期最终报告截止前未完成合格封存，无正式预测可结算；业务指定期次计为未命中并记录覆盖缺口。",
                         "不会拿提前验收预测、历史回放或开奖后预测补造本期命中。50%目标未建立。",
+                        *reference_lines,
                     ],
                 },
                 "STATUS",
@@ -206,7 +239,7 @@ class Reports:
         return state
 
     def alert(self, code, message):
-        day = now().astimezone(ZONE).date().isoformat()
+        day = self.clock().astimezone(ZONE).date().isoformat()
         self.mail.queue(
             "ALERT",
             day + ":" + code,
@@ -245,7 +278,7 @@ class Reports:
         payload = self.pre_payload(predictions[0], next_target(latest))
         payload["title"] = "[DEHPS Next 验收] 邮件、官方同步与开奖报告链路已就绪"
         payload["lines"].insert(
-            0, "本封是链路验收邮件；19:00正式报告按独立去重账本发送。旧系统邮件任务保持不变。"
+            0, "本封是链路验收邮件；17:00收尾后的报告按独立去重账本发送；旧系统保持关闭。"
         )
         example = self.db.rows(
             "SELECT e.metrics,e.issue FROM evaluations e WHERE e.mode='REPLAY' ORDER BY e.created_at DESC LIMIT 1"

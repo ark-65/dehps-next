@@ -59,12 +59,15 @@ class Database:
             if not c.execute("SELECT 1 FROM schema_migrations WHERE version=9").fetchone():
                 c.execute(files("dehps_next").joinpath("migrations/009_up.sql").read_text())
                 c.execute("INSERT INTO schema_migrations VALUES(9)")
+            if not c.execute("SELECT 1 FROM schema_migrations WHERE version=10").fetchone():
+                c.execute(files("dehps_next").joinpath("migrations/010_up.sql").read_text())
+                c.execute("INSERT INTO schema_migrations VALUES(10)")
 
     def rows(self, sql, params=()):
         with self.pool.connection() as c:
             return c.execute(sql, params).fetchall()
 
-    def claim(self, worker, role="all"):
+    def claim(self, worker, role="all", at=None):
         token = str(uuid.uuid4())
         with self.pool.connection() as c, c.transaction():
             c.execute("SELECT pg_advisory_xact_lock(740139)")
@@ -76,17 +79,33 @@ class Database:
             roles = {"all": "TRUE", "compute": "kind!='RESEARCH_PLAN'", "planning": "kind='RESEARCH_PLAN'"}
             if role not in roles:
                 raise ValueError("Unknown worker role")
+            from .training_window import TRAINING_KINDS
+            from .training_window import status as training_window
+
+            paused = training_window(c, at)["paused"]
+            allowed = " AND NOT (kind=ANY(%s))" if paused else ""
+            params = (list(TRAINING_KINDS),) if paused else ()
+            if paused:
+                from psycopg.types.json import Jsonb
+
+                window = training_window(c, at)
+                c.execute(
+                    "INSERT INTO resource_state VALUES(1,%s) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload",
+                    (Jsonb({"reason": "PAUSED_DRAW_WINDOW", "training_window": window}),),
+                )
             row = c.execute(
                 "SELECT * FROM jobs WHERE state='READY' AND not_before<=now() AND "
                 + roles[role]
-                + " ORDER BY CASE WHEN kind LIKE 'RESEARCH_%' THEN 1 ELSE 0 END,created_at,id "
-                "FOR UPDATE SKIP LOCKED LIMIT 1"
+                + allowed
+                + " ORDER BY CASE WHEN kind LIKE 'RESEARCH_%%' THEN 1 ELSE 0 END,created_at,id "
+                "FOR UPDATE SKIP LOCKED LIMIT 1",
+                params,
             ).fetchone()
             if row is None:
                 return None
             from .resources import Resources
 
-            admission = Resources(self).admit(c, row, token)
+            admission = Resources(self).admit(c, row, token, at=at)
             if admission is None:
                 return None
             row = c.execute(

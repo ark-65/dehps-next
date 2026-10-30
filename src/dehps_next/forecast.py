@@ -10,7 +10,7 @@ from .data import DataService
 from .domain import digest, now, timestamp
 from .errors import DomainError
 from .model import historical_baseline, load_torch
-from .release import code_identity
+from .release import code_identity, numeric_identity
 from .research_compute import predict_anchor
 from .research_protocol import summary
 from .scores import decode
@@ -89,24 +89,46 @@ def assess(rows, protocol, decision, snapshot=None):
 
 
 class Forecast:
-    def __init__(self, db, artifacts):
+    def __init__(self, db, artifacts, clock=None):
         self.db, self.artifacts = db, artifacts
+        self.clock = clock or now
 
-    def candidates(self):
+    def candidates(self, cutoff=None, reference=False):
+        boundary_time = cutoff or self.clock()
         latest = self.db.rows(
-            "SELECT issue FROM effective_draws WHERE available_at<=now() AND observed_at<=now() ORDER BY draw_at DESC LIMIT 1"
+            "SELECT issue FROM effective_draws WHERE available_at<=%s AND observed_at<=%s ORDER BY draw_at DESC LIMIT 1",
+            (boundary_time, boundary_time),
         )[0]["issue"]
+        contract = (
+            "r.config->>'numeric_digest'=%s AND (r.config->>'numeric_threads')::int=%s"
+            if reference
+            else "r.config->>'code_digest'=%s"
+        )
+        values = (
+            (numeric_identity(), self.db.settings.training_threads, latest)
+            if reference
+            else (code_identity(), latest)
+        )
+        boundary = " AND n.completed_at<=%s" if cutoff is not None else ""
+        if not reference:
+            boundary += " AND n.status IN ('ACCEPT_BASELINE','ACCEPT_IMPROVEMENT')"
+        if cutoff is not None:
+            values = (*values, cutoff)
         found = self.db.rows(
             """SELECT n.*,r.dataset_id,r.config,r.protocol,ds.artifact AS data_artifact,ds.through_issue
-            FROM research_campaigns r JOIN research_nodes n ON n.id=r.selected_node
+            FROM research_campaigns r JOIN research_nodes n ON n.campaign_id=r.id
             JOIN datasets ds ON ds.id=r.dataset_id
-            WHERE r.config->>'code_digest'=%s AND ds.through_issue=%s
+            WHERE """
+            + contract
+            + """ AND ds.through_issue=%s
               AND r.protocol->>'version'='recent100-tail10-random-v2'
               AND n.anchor IS NOT NULL
               AND EXISTS(SELECT 1 FROM artifact_catalog ac WHERE ac.path=n.evaluation->'scores'->>'path' AND ac.state!='DELETED')
               AND EXISTS(SELECT 1 FROM artifact_catalog ac WHERE ac.path=n.evaluation->'publication_anchor'->>'path' AND ac.state!='DELETED')
-              ORDER BY n.completed_at DESC LIMIT 64""",
-            (code_identity(), latest),
+              """
+            + boundary
+            + """ ORDER BY n.completed_at DESC LIMIT 64""",
+            values,
         )
         candidates, snapshots = [], {}
         for node in found:
@@ -133,8 +155,8 @@ class Forecast:
         }
 
     def for_report(self, target, missing_evidence):
-        if now().astimezone(ZONE) < target["mail_time"]:
-            raise DomainError("FINAL_REPORT_TOO_EARLY", "Preparation cannot mark a draw missing before19:00")
+        if self.clock().astimezone(ZONE) < target["mail_time"]:
+            raise DomainError("FINAL_REPORT_TOO_EARLY", "Preparation cannot mark a draw missing before17:00")
         # Serialize the final report with the final sealing transaction. A seal that is
         # committing at the boundary must never be mistaken for a missing prediction.
         with self.db.pool.connection() as c, c.transaction():
@@ -157,15 +179,72 @@ class Forecast:
             )
         return None
 
-    def seal(self, target):
-        clock = now().astimezone(ZONE)
-        if not target["seal_time"] <= clock < target["mail_time"]:
+    def reference(self, target):
+        """Frozen report numbers even when formal eligibility fails; never a qualified selection."""
+        candidates = self.candidates(cutoff=target["prepare_time"], reference=True)
+        if candidates:
+            node, gate = candidates[0]
+            snapshot = json.loads(self.artifacts.read(node["data_artifact"]))
+            prediction = predict_anchor(
+                self.artifacts.read(node["evaluation"]["publication_anchor"]), snapshot["rows"]
+            )
+            source = {
+                "kind": "COMPLETED_NEURAL_ANCHOR",
+                "node": node["id"],
+                "path": node["path"],
+                "completed_at": node["completed_at"].isoformat(),
+                "spec": node["spec"],
+                "anchor_sha256": node["evaluation"]["publication_anchor"]["sha256"],
+                "validation": gate,
+            }
+            label = "暂停前已完成的神经网络候选"
+        else:
+            with self.db.pool.connection() as c:
+                dataset = DataService(self.db, self.artifacts).snapshot(
+                    c, cutoff=target["prepare_time"], target_draw_at=target["draw_time"], mode="FORWARD"
+                )
+            snapshot = json.loads(self.artifacts.read(dataset["artifact"]))
+            prediction = historical_baseline(snapshot["rows"])
+            source = {
+                "kind": "HISTORICAL_FREQUENCY_BASELINE",
+                "dataset": dataset["id"],
+                "validation": {"eligible": False, "reasons": ["NO_COMPLETED_NEURAL_VALIDATION"]},
+            }
+            label = "冻结历史频率基线；不是神经网络合格候选"
+        if any(
+            timestamp(row["available_at"]) > target["prepare_time"]
+            or timestamp(row["draw_at"]) >= target["draw_time"]
+            for row in snapshot["rows"]
+        ):
             raise DomainError(
-                "WAITING_FINAL_SEAL_WINDOW", "Only seal 18:50 <= Shanghai time < 19:00 on the draw day"
+                "REFERENCE_DATA_BOUNDARY", "Reference contains data beyond17:00 or target labels"
+            )
+        return {
+            "blue": prediction["blue_top1"],
+            "tickets": prediction["red_top100"],
+            "reference": {
+                **source,
+                "scope": "RESEARCH_REFERENCE_NOT_FORMAL_RECOMMENDATION",
+                "through_issue": snapshot["rows"][-1]["issue"],
+                "blue_probabilities": prediction["blue_probabilities"],
+                "red_probabilities": prediction.get("red_probabilities"),
+            },
+            "lines": [
+                f"研究参考 Top100 来源：{label}；历史截至{snapshot['rows'][-1]['issue']}。",
+                f"开发验证状态：{source['validation'].get('reasons', [])}；本次未作为正式合格推荐。",
+                "下列红球Top100与唯一蓝球Top1仅作研究参考；不计为通过门槛的正式推荐，正式覆盖缺口仍如实保留。",
+            ],
+        }
+
+    def seal(self, target):
+        clock = self.clock().astimezone(ZONE)
+        if not target["seal_time"] <= clock < target["deadline_time"]:
+            raise DomainError(
+                "WAITING_FINAL_SEAL_WINDOW", "Seal after17:00 pause/finalization; do not wait until19:00"
             )
         if self.db.rows("SELECT 1 FROM effective_forecast_selections WHERE issue=%s", (target["issue"],)):
             return "ALREADY_DECIDED"
-        candidates = self.candidates()
+        candidates = self.candidates(cutoff=target["prepare_time"])
         if not candidates or not candidates[0][1]["eligible"]:
             return "WAITING_VALIDATED_CANDIDATE"
         node, gate = candidates[0]
@@ -174,7 +253,7 @@ class Forecast:
         anchor = load_torch(anchor_bytes)
         snapshot = json.loads(self.artifacts.read(node["data_artifact"]))
         if any(
-            timestamp(r["available_at"]) > now() or timestamp(r["draw_at"]) >= target["draw_time"]
+            timestamp(r["available_at"]) > self.clock() or timestamp(r["draw_at"]) >= target["draw_time"]
             for r in snapshot["rows"]
         ):
             raise DomainError("FORECAST_DATA_BOUNDARY", "Anchor contains unavailable or target-period labels")
@@ -205,10 +284,13 @@ class Forecast:
                 "SELECT 1 FROM effective_forecast_selections WHERE issue=%s", (target["issue"],)
             ).fetchone():
                 return "ALREADY_DECIDED"
-            if not target["seal_time"] <= now().astimezone(ZONE) < target["mail_time"]:
-                raise DomainError("MISSED_FINAL_SEAL_WINDOW", "Do not publish after 19:00")
+            if not target["seal_time"] <= self.clock().astimezone(ZONE) < target["deadline_time"]:
+                raise DomainError(
+                    "MISSED_FINAL_SEAL_WINDOW", "Do not publish after the configured outage failsafe"
+                )
             latest = c.execute(
-                "SELECT issue FROM effective_draws WHERE available_at<=now() AND observed_at<=now() ORDER BY draw_at DESC LIMIT 1"
+                "SELECT issue FROM effective_draws WHERE available_at<=%s AND observed_at<=%s ORDER BY draw_at DESC LIMIT 1",
+                (self.clock(), self.clock()),
             ).fetchone()
             if (
                 latest["issue"] != node["through_issue"]
@@ -217,7 +299,7 @@ class Forecast:
                 raise DomainError(
                     "FORECAST_DATA_CHANGED", "Candidate no longer covers the current legal boundary"
                 )
-            cutoff = now()
+            cutoff = self.clock()
             formal_data = DataService(self.db, self.artifacts).snapshot(
                 c, cutoff=cutoff, target_draw_at=target["draw_time"], mode="FORWARD"
             )
@@ -267,7 +349,7 @@ class Forecast:
                     (model_ref["sha256"], row["issue"], node["spec"]["epochs"]),
                 )
             c.execute(
-                "INSERT INTO predictions(cycle_id,model_id,issue,mode,cutoff,payload,payload_digest,baseline) VALUES(%s,%s,%s,'FORWARD',%s,%s,%s,%s)",
+                "INSERT INTO predictions(cycle_id,model_id,issue,mode,cutoff,payload,payload_digest,baseline,sealed_at) VALUES(%s,%s,%s,'FORWARD',%s,%s,%s,%s,%s)",
                 (
                     cycle,
                     model_ref["sha256"],
@@ -276,6 +358,7 @@ class Forecast:
                     Jsonb(prediction),
                     digest(prediction),
                     Jsonb(baseline),
+                    self.clock(),
                 ),
             )
             c.execute(

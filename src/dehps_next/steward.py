@@ -164,6 +164,11 @@ class Steward:
                 "BLOCKED_RELEASE_CHANGED",
                 "Explicitly review and re-register program policy after a release",
             )
+        from .training_window import status as training_window
+
+        window = training_window(c)
+        if window["paused"]:
+            return "PAUSED_DRAW_WINDOW", window["reason"] + ":" + window.get("draw_day", "UNKNOWN")
         day = now().astimezone(ZONE).date()
         current = (
             c.execute("SELECT * FROM research_campaigns WHERE id=%s", (p["current_campaign"],)).fetchone()

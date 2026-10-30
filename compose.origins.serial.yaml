@@ -1,0 +1,18 @@
+# Explicit serial-origin rollback. Finish the frozen campaign before switching.
+# Qwen remains on GPU; draw-day17:00 pause/report policy is unchanged.
+x-serial-origins: &serial-origins
+  DEHPS_NEXT_TRAINING_THREADS: "8"
+  DEHPS_NEXT_ORIGIN_PROCESSES: "1"
+services:
+  worker:
+    environment:
+      <<: *serial-origins
+      DEHPS_NEXT_THREADS: "8"
+    cpus: 8
+    mem_limit: 2g
+    pids_limit: 128
+  planner: {environment: *serial-origins}
+  steward: {environment: *serial-origins}
+  source: {environment: *serial-origins}
+  reporter: {environment: *serial-origins}
+  api: {environment: *serial-origins}
