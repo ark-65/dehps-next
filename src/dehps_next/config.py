@@ -18,6 +18,7 @@ class Settings:
     inference_threads: int = 12
     inference_busy_threads: int = 4
     cpu_pool: str = "0-19"
+    inference_backend: str = "cpu"
 
     @classmethod
     def from_env(cls):
@@ -48,7 +49,10 @@ class Settings:
             inference_threads=int(os.getenv("DEHPS_NEXT_INFERENCE_THREADS", "12")),
             inference_busy_threads=int(os.getenv("DEHPS_NEXT_INFERENCE_BUSY_THREADS", "4")),
             cpu_pool=os.getenv("DEHPS_NEXT_CPU_POOL", "0-19"),
+            inference_backend=os.getenv("DEHPS_NEXT_INFERENCE_BACKEND", "cpu"),
         )
+        if result.inference_backend not in ("cpu", "vulkan"):
+            raise ValueError("Invalid local inference backend")
         if result.cpu_pool != "0-19" or set(os.sched_getaffinity(0)) != set(range(20)):
             raise ValueError("Next must run in the registered CPU0-19 pool; reserve20-21 for the host")
         if any(

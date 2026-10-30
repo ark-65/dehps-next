@@ -121,7 +121,7 @@ docker compose run --rm worker research-status --name research-001
 
 ## P2b 本地数学研究
 
-使用 Next 专用 CPU 容器内的 `qwen3:1.7b`，无外部推理回退。模型先提出假设，实际调用数学工具，
+使用 Next 专用本机推理容器内的 `qwen3:1.7b`，无外部推理回退。模型先提出假设，实际调用数学工具，
 再读取工具结果和实验反馈选择候选。已实现因果窗口傅里叶、岭回归残差头与牛顿温度校准，
 并实际训练225参数的方向价值网络。推理大模型权重保持冻结，不能把提示修正称为 LLM 微调。
 
@@ -193,3 +193,8 @@ docker compose -f compose.yaml -f compose.inference.yaml up -d source reporter w
 当前邮件时间与旧17:00状态修正见 [晚间准备与最终报告](docs/architecture/evening-mail-schedule.md)。19:30是保守的内部发送截止，不是官方停售时间。每日容量秒/调用用量限额已由后续token观察政策取消。
 
 当前CPU分区采用Next独立CPU0-19、系统LP-E CPU20-21；训练与Qwen线程按真实吞吐选定，详见[CPU分区与吞吐](docs/architecture/cpu-pool-throughput.md)。部署前先执行管理员脚本prepare，所有Next容器迁入独立slice后才能apply系统限制；restore-host可恢复原系统CPU范围。
+
+
+## 2026-10-30 全GPU推理
+
+实测后默认Qwen经Intel Arc Vulkan全29层卸载，CPU辅助最多4；预测训练仍为CPU8、规划1，两个LP-E核继续留给系统。固定同量工作块重复对照快34%–54%；真实3节点活动127.24→119.64秒，但GPU选择了不同、更重的分支，不能把两者当成严格同量加速。温度只记录，不作为选型门槛。[完整验收与显式CPU回退](docs/acceptance/gpu-qwen-20261030.md)。此更新替代上方默认CPU空闲12/繁忙4方案；原CPU方案保留为显式回退。

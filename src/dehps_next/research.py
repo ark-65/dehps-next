@@ -67,6 +67,7 @@ class Research:
             "numeric_threads": self.db.settings.training_threads,
             "numeric_cpu_pool": self.db.settings.cpu_pool,
             "inference_threads": self.db.settings.inference_threads,
+            "inference_backend": self.db.settings.inference_backend,
             "inference_busy_threads": self.db.settings.inference_busy_threads,
             "code_digest": code_identity(),
             "numeric_digest": numeric_identity(),

@@ -1,0 +1,20 @@
+# Explicit rollback to the measured CPU profile. Finish the frozen batch before switching.
+x-cpu-inference: &cpu-inference
+  DEHPS_NEXT_INFERENCE_BACKEND: cpu
+  DEHPS_NEXT_INFERENCE_THREADS: "12"
+  DEHPS_NEXT_INFERENCE_BUSY_THREADS: "4"
+services:
+  worker: {environment: *cpu-inference}
+  planner: {environment: *cpu-inference}
+  steward: {environment: *cpu-inference}
+  source: {environment: *cpu-inference}
+  reporter: {environment: *cpu-inference}
+  api: {environment: *cpu-inference}
+  inference:
+    environment:
+      OLLAMA_VULKAN: "0"
+      OLLAMA_IGPU_ENABLE: "0"
+      GGML_VK_VISIBLE_DEVICES: ""
+      VK_DRIVER_FILES: ""
+    devices: !reset []
+    cpus: 12
