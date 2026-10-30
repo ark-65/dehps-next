@@ -8,6 +8,8 @@ from psycopg.types.json import Jsonb
 
 from .domain import now
 from .errors import DomainError
+from .training_window import TRAINING_KINDS
+from .training_window import status as training_window
 
 ZONE = ZoneInfo("Asia/Shanghai")
 GIB = 1024**3
@@ -67,7 +69,9 @@ class Resources:
         if any(t["categories"][key] >= limit for key, limit in limits.items()):
             return "CATEGORY_STORAGE_LIMIT"
         # All compute/planning/inference quotas fit under both physical and available memory envelopes.
-        if 9 * GIB > min(t["memory_total"] * 0.6, t["memory_available"] - 4 * GIB):
+        if (9 + self.db.settings.origin_processes // 2) * GIB > min(
+            t["memory_total"] * 0.6, t["memory_available"] - 4 * GIB
+        ):
             return "HOST_MEMORY_PRESSURE"
         return None
 
@@ -92,9 +96,17 @@ class Resources:
             WHERE r.state='ACTIVE' AND (j.id IS NULL OR (j.state!='RUNNING' AND j.updated_at<now()-interval '60 seconds') OR j.lease_until<now()) FOR UPDATE OF r""").fetchall():
             self.settle(c, r, r["wall_cap"], state="EXPIRED_CHARGED_FULL", full=True)
 
-    def admit(self, c, job, token):
+    def admit(self, c, job, token, at=None):
         c.execute("SELECT pg_advisory_xact_lock(740140)")
         self.reap(c)
+        if job["kind"] in TRAINING_KINDS:
+            window = training_window(c, at)
+            if window["paused"]:
+                c.execute(
+                    "INSERT INTO resource_state VALUES(1,%s) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload",
+                    (Jsonb({"reason": "PAUSED_DRAW_WINDOW", "training_window": window}),),
+                )
+                return None
         research = job["research_node_id"] is not None
         closing = False
         if job["kind"] == "RESEARCH_PLAN":
@@ -106,7 +118,13 @@ class Resources:
             ).fetchone()["closing"]
         lane = "planning" if job["kind"] == "RESEARCH_PLAN" else "compute"
         wall, cpu, write = (
-            (420, 1 + self.db.settings.inference_threads, 4 * 1024**2) if lane == "planning" else (COMPUTE_WALL, self.db.settings.training_threads, 32 * 1024**2)
+            (420, 1 + self.db.settings.inference_threads, 4 * 1024**2)
+            if lane == "planning"
+            else (
+                COMPUTE_WALL,
+                min(20, self.db.settings.training_threads * self.db.settings.origin_processes),
+                32 * 1024**2,
+            )
         )
         if lane == "planning" and not closing:
             from .research_agent import use_local_model
@@ -123,7 +141,12 @@ class Resources:
         if closing:
             wall, cpu, write = 5, 1, 64 * 1024
         if not research:
-            wall, cpu, write = 600, self.db.settings.training_threads, 64 * 1024**2
+            core = c.execute(
+                "SELECT l.config FROM cycles cy JOIN loops l ON l.id=cy.loop_id WHERE cy.id=%s",
+                (job["cycle_id"],),
+            ).fetchone()
+            cpu = int(core["config"]["recipe"].get("threads", self.db.settings.training_threads))
+            wall, write = 600, 64 * 1024**2
         reason = None
         lifetime = c.execute(
             "SELECT coalesce(sum(wall_seconds),0) AS n FROM resource_reservations WHERE job_id=%s AND state!='ACTIVE'",

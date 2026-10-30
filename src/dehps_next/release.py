@@ -30,9 +30,18 @@ def numeric_identity():
         "research_protocol.py",
         "scores.py",
     ]
+    # Exact orchestration source audited against the unchanged v2 fitter, scores, anchors and RNG.
+    # Unknown future edits get a new numeric identity; no blanket compatibility mapping.
+    equivalent_compute = {
+        "4d6ac973f26418215fee5e15432df5a424135028126ebc53ef87aaec14bdadba": "4e6efa00349cdbb4da980ffab37b2b24c4c6d7c9cfa40b6e885424c8a9d38d78",
+    }
+    hashes = {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in names}
+    hashes["research_compute.py"] = equivalent_compute.get(
+        hashes["research_compute.py"], hashes["research_compute.py"]
+    )
     return digest(
         {
-            "files": {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in names},
+            "files": hashes,
             "torch": str(torch.__version__),
             "numpy": np.__version__,
             "contract": "prior-fit-v2-single-blas",

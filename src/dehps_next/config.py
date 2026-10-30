@@ -19,6 +19,7 @@ class Settings:
     inference_busy_threads: int = 4
     cpu_pool: str = "0-19"
     inference_backend: str = "cpu"
+    origin_processes: int = 1
 
     @classmethod
     def from_env(cls):
@@ -50,7 +51,12 @@ class Settings:
             inference_busy_threads=int(os.getenv("DEHPS_NEXT_INFERENCE_BUSY_THREADS", "4")),
             cpu_pool=os.getenv("DEHPS_NEXT_CPU_POOL", "0-19"),
             inference_backend=os.getenv("DEHPS_NEXT_INFERENCE_BACKEND", "cpu"),
+            origin_processes=int(os.getenv("DEHPS_NEXT_ORIGIN_PROCESSES", "1")),
         )
+        if not 1 <= result.origin_processes <= 8:
+            raise ValueError("Expected1..8 isolated origin fitters")
+        if result.origin_processes > 1 and result.training_threads not in (1, 2, 4, 8):
+            raise ValueError("Parallel origin fitters require an audited thread count")
         if result.inference_backend not in ("cpu", "vulkan"):
             raise ValueError("Invalid local inference backend")
         if result.cpu_pool != "0-19" or set(os.sched_getaffinity(0)) != set(range(20)):

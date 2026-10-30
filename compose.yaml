@@ -6,7 +6,8 @@ x-app: &app
   build: .
   env_file: .env
   environment: &app-env
-    DEHPS_NEXT_TRAINING_THREADS: "8"
+    DEHPS_NEXT_TRAINING_THREADS: "1"
+    DEHPS_NEXT_ORIGIN_PROCESSES: "8"
     DEHPS_NEXT_INFERENCE_THREADS: "4"
     DEHPS_NEXT_INFERENCE_BACKEND: vulkan
     DEHPS_NEXT_INFERENCE_BUSY_THREADS: "4"
@@ -65,9 +66,11 @@ services:
     <<: *app
     command: [worker, --role, compute]
     cpus: 8
+    mem_limit: 6g
+    pids_limit: 256
     environment:
       <<: *app-env
-      DEHPS_NEXT_THREADS: "8"
+      DEHPS_NEXT_THREADS: "1"
       OPENBLAS_NUM_THREADS: "1"
       OMP_NUM_THREADS: "1"
       MKL_NUM_THREADS: "1"

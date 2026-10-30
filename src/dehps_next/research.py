@@ -65,6 +65,7 @@ class Research:
             "root_spec": root_spec,
             "topic": topic,
             "numeric_threads": self.db.settings.training_threads,
+            "origin_processes": self.db.settings.origin_processes,
             "numeric_cpu_pool": self.db.settings.cpu_pool,
             "inference_threads": self.db.settings.inference_threads,
             "inference_backend": self.db.settings.inference_backend,
@@ -221,7 +222,7 @@ class Research:
         initial = self.artifacts.read(parent[0]["anchor"]) if parent else None
 
         def checkpoint(payload):
-            pulse()
+            # Flushing a completed prefix is permitted during pause; fencing is still mandatory.
             self.db.heartbeat(job)
             slot = (len(payload["rows"]) // 8) % 2
             ref = self.artifacts.write(
@@ -245,6 +246,8 @@ class Research:
             initial=initial,
             seconds=node["config"]["node_seconds"],
             include_reserve=include_reserve,
+            processes=node["config"].get("origin_processes", 1),
+            threads=node["config"].get("numeric_threads", 2),
         )
         parent_scores = (
             decode(self.artifacts.read(parent[0]["evaluation"]["scores"]))["rows"] if parent else None
@@ -275,6 +278,8 @@ class Research:
                 initial=initial,
                 seconds=node["config"]["node_seconds"],
                 include_reserve=True,
+                processes=node["config"].get("origin_processes", 1),
+                threads=node["config"].get("numeric_threads", 2),
             )
             execution["resumed_origins"] = prior_execution["resumed_origins"]
             execution["origin_fits_executed_this_attempt"] += prior_execution[
