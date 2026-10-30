@@ -9,6 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 UNITS = ("system.slice", "user.slice", "init.scope")
+BOOT_UNIT = "dehpsnext-cpu-reservation.service"
 NAMES = [
     f"dehps-next-p0p1-{s}-1"
     for s in ("database", "worker", "planner", "steward", "source", "reporter", "api")
@@ -43,6 +44,12 @@ if args.mode == "prepare":
         raise SystemExit("Unexpected existing Next slice; review before replacement.")
     target.write_bytes(source.read_bytes())
     target.chmod(0o644)
+    boot_source = ROOT / "deploy/systemd" / BOOT_UNIT
+    boot_target = Path("/etc/systemd/system") / BOOT_UNIT
+    if boot_target.exists() and boot_target.read_bytes() != boot_source.read_bytes():
+        raise SystemExit("Unexpected existing CPU boot service; review before replacement.")
+    boot_target.write_bytes(boot_source.read_bytes())
+    boot_target.chmod(0o644)
     subprocess.run(["systemctl", "daemon-reload"], check=True)
     subprocess.run(["systemctl", "enable", "--now", "dehpsnext.slice"], check=True)
 if args.mode in ("apply", "check"):
@@ -59,7 +66,11 @@ if args.mode in ("apply", "check"):
         try:
             for unit in UNITS:
                 subprocess.run(["systemctl", "set-property", unit, "AllowedCPUs=20-21"], check=True)
+            # init.scope is transient: its set-property drop-in lives under/run.
+            # Reapply its reservation at boot before Docker restores Next containers.
+            subprocess.run(["systemctl", "enable", "--now", BOOT_UNIT], check=True)
         except Exception:
+            subprocess.run(["systemctl", "disable", "--now", BOOT_UNIT], check=False)
             original = json.loads(before.read_text())
             for unit in UNITS:
                 subprocess.run(
@@ -70,7 +81,10 @@ if args.mode in ("apply", "check"):
     for unit in UNITS:
         assert properties(unit)["EffectiveCPUs"] == "20-21", (unit, properties(unit))
     assert properties("dehpsnext.slice")["EffectiveCPUs"] == "0-19"
+    assert call("systemctl", "is-enabled", BOOT_UNIT) == "enabled"
+    assert call("systemctl", "is-active", BOOT_UNIT) == "active"
     result = {
+        "init_scope_boot_reservation": BOOT_UNIT,
         "at": datetime.now().astimezone().isoformat(),
         "host": {u: properties(u) for u in UNITS},
         "next_slice": properties("dehpsnext.slice"),
@@ -81,6 +95,7 @@ if args.mode in ("apply", "check"):
     p.chmod(0o644)
     print(json.dumps(result))
 if args.mode == "restore-host":
+    subprocess.run(["systemctl", "disable", "--now", BOOT_UNIT], check=True)
     original = json.loads(before.read_text())
     for unit in UNITS:
         subprocess.run(

@@ -37,3 +37,5 @@
 紧急回退先运行管理员restore-host恢复原宿主CPU范围，再回退容器配置；改变训练线程前必须完成或明确终止当前冻结活动。prepare/apply/check/restore-host使用同一脚本，管理员凭据不存入文件。
 
 19:00最终邮件及19:30内部发送截止保持原计划。本机用量只观察真实token，没有每日容量秒、调用或token用量截停。内存、磁盘、并发、租约和防卡死保护继续生效；没有新增单元测试或CI。
+
+宿主持久化补充：system.slice/user.slice的set-property文件位于/etc/systemd/system.control；init.scope属于瞬态单元，属性可能仅落在/run。因此prepare安装dehpsnext-cpu-reservation.service，apply启用并立即执行；开机在Docker之前重新设置init.scope为20-21。restore-host同时禁用这个启动单元，避免回退后再次施加旧策略。
