@@ -1,0 +1,13 @@
+[Unit]
+Description=Restore DEHPS Next host LP-E CPU reservation at boot
+Requires=dehpsnext.slice
+After=dbus.service dehpsnext.slice
+Before=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl set-property init.scope AllowedCPUs=20-21
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
