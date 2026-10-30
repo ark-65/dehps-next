@@ -191,3 +191,5 @@ docker compose -f compose.yaml -f compose.inference.yaml up -d source reporter w
 本地Qwen不按消耗计费，也不再按日容量秒、调用次数或token累计截停。保留8/4/1实时核数和内存/存储等保护，只通过 `dehps-next token-usage`、只读status及正常报告展示实际输入/输出token。旧额度记录仅为历史，budget-set退役；此政策覆盖上面的每日691200/24说明。[执行政策](docs/architecture/local-token-observability.md) · [真实Qwen验收](docs/acceptance/local-token-20261029.md)。
 
 当前邮件时间与旧17:00状态修正见 [晚间准备与最终报告](docs/architecture/evening-mail-schedule.md)。19:30是保守的内部发送截止，不是官方停售时间。每日容量秒/调用用量限额已由后续token观察政策取消。
+
+当前CPU分区采用Next独立CPU0-19、系统LP-E CPU20-21；训练与Qwen线程按真实吞吐选定，详见[CPU分区与吞吐](docs/architecture/cpu-pool-throughput.md)。部署前先执行管理员脚本prepare，所有Next容器迁入独立slice后才能apply系统限制；restore-host可恢复原系统CPU范围。

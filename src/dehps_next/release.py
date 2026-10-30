@@ -35,6 +35,7 @@ def numeric_identity():
             "files": {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in names},
             "torch": str(torch.__version__),
             "numpy": np.__version__,
-            "contract": "prior-fit-v1",
+            "contract": "prior-fit-v2-single-blas",
+            "blas_threads": 1,
         }
     )

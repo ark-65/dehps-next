@@ -3,6 +3,8 @@ services:
   inference:
     image: ollama/ollama@sha256:b2f0122c476bc9fe7ce679d8bb4bd555351e25e2554eefb156f61cb0a89cf429
     container_name: dehps-next-inference
+    cpuset: "0-19"
+    cgroup_parent: dehpsnext.slice
     environment:
       OLLAMA_NO_CLOUD: "1"
       OLLAMA_VULKAN: "0"
@@ -15,7 +17,7 @@ services:
       next: {aliases: [next-inference]}
     ports: ["127.0.0.1:11435:11434"]
     mem_limit: 6g
-    cpus: 4
+    cpus: 12
     pids_limit: 256
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]

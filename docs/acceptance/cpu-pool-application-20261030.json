@@ -1,0 +1,181 @@
+{
+  "scope": "REAL_ISOLATED_NEXT_APPLICATION_NO_SMTP_NO_FORWARD_CLAIM",
+  "release": "28c04a6f057b7e7889e3c51b0e8fd12651681c4d8bce6dffd41cd68281aa59ab",
+  "threads": 8,
+  "inference_threads": 12,
+  "affinity": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19
+  ],
+  "wall_seconds": 109.20854556700215,
+  "campaign": {
+    "config": {
+      "topic": null,
+      "recent": 100,
+      "planner": "local",
+      "purpose": "DEVELOPMENT_RESEARCH_NOT_FORMAL_PREDICTION",
+      "max_nodes": 3,
+      "root_spec": {
+        "epochs": 28,
+        "hidden": 128,
+        "method": "newton",
+        "window": 16,
+        "weight_decay": 0.001,
+        "learning_rate": 0.002,
+        "train_history": 256
+      },
+      "historical": 200,
+      "code_digest": "28c04a6f057b7e7889e3c51b0e8fd12651681c4d8bce6dffd41cd68281aa59ab",
+      "node_seconds": 600,
+      "numeric_digest": "cdbe2e838e51e75bdbf0c38e3d47ce383a9fe0532e1990bbc0107be29055e38f",
+      "numeric_threads": 8,
+      "inference_policy": "LOCAL_TOKEN_OBSERVATION_ONLY",
+      "numeric_cpu_pool": "0-19",
+      "inference_threads": 12,
+      "inference_busy_threads": 4
+    },
+    "status": "BATCH_COMPLETE"
+  },
+  "nodes": [
+    {
+      "path": "1",
+      "status": "ACCEPT_BASELINE",
+      "source": "ROOT_CONTRACT",
+      "verdict": "ACCEPT_BASELINE",
+      "execution": {
+        "history_source": "FRESH_PRIOR_FITS",
+        "resumed_origins": 0,
+        "step_count_scope": "unique_completed_fits;excludes_interrupted_or_recomputed_work",
+        "anchor_weight_digest": "199241f79428d19f5722bd7832b93450a9573d4aca3dbb34664f902426b0967e",
+        "seconds_this_attempt": 14.9824,
+        "reserve_fits_available": 40,
+        "anchor_optimizer_digest": "1dfe634420be48379172a368a550385982bd69bea2401d2eddeb1553649df843",
+        "finite_reserve_extension": false,
+        "publication_anchor_fresh": true,
+        "publication_weight_digest": "199241f79428d19f5722bd7832b93450a9573d4aca3dbb34664f902426b0967e",
+        "anchor_mathematical_digest": "bfd5609fd0f027484b18fba0169c7b1a9cdcaa2484cfa9f7d2bc79d9a4b54eb2",
+        "all_origin_parameters_updated": true,
+        "committed_origin_and_anchor_steps": 9268,
+        "origin_fits_executed_this_attempt": 330,
+        "anchor_inherited_compatible_parent": false,
+        "gradient_steps_executed_this_attempt": 9268
+      }
+    },
+    {
+      "path": "1-1",
+      "status": "PRUNE_REGRESSION",
+      "source": "LOCAL_MODEL_WITH_MATH_TOOLS",
+      "verdict": "PRUNE_REGRESSION",
+      "execution": {
+        "history_source": "FRESH_PRIOR_FITS",
+        "resumed_origins": 0,
+        "step_count_scope": "unique_completed_fits;excludes_interrupted_or_recomputed_work",
+        "anchor_weight_digest": "ba7153df682ca880694cd67ccbf753adb6a9b497090f970f3499aa5cd692bd53",
+        "seconds_this_attempt": 25.8925,
+        "reserve_fits_available": 0,
+        "anchor_optimizer_digest": "bee7f3b81c569f928643bd7553aac2bf4756abef4c56dfad13cc18dbe823c24b",
+        "finite_reserve_extension": false,
+        "publication_anchor_fresh": true,
+        "publication_weight_digest": "ba7153df682ca880694cd67ccbf753adb6a9b497090f970f3499aa5cd692bd53",
+        "anchor_mathematical_digest": "fed7f55c9c68a24f0579d1bbeb10d06c5ddec1269a5760fc139a0add46c518cc",
+        "all_origin_parameters_updated": true,
+        "committed_origin_and_anchor_steps": 8148,
+        "origin_fits_executed_this_attempt": 290,
+        "anchor_inherited_compatible_parent": false,
+        "gradient_steps_executed_this_attempt": 8148
+      }
+    },
+    {
+      "path": "1-2",
+      "status": "INCONCLUSIVE",
+      "source": "TRAINED_DIRECTION_VALUE_NETWORK",
+      "verdict": "INCONCLUSIVE",
+      "execution": {
+        "history_source": "FRESH_PRIOR_FITS",
+        "resumed_origins": 0,
+        "step_count_scope": "unique_completed_fits;excludes_interrupted_or_recomputed_work",
+        "anchor_weight_digest": "02279ee40026e32b5ea4abe41857ae0f3d77ef8d8585ed982876c2c9b6e36463",
+        "seconds_this_attempt": 9.5125,
+        "reserve_fits_available": 40,
+        "anchor_optimizer_digest": "d8dff0231f3ad06210a1625fdf8c16609f2fadfdb6112e055e154177cef36308",
+        "finite_reserve_extension": true,
+        "publication_anchor_fresh": true,
+        "publication_weight_digest": "02279ee40026e32b5ea4abe41857ae0f3d77ef8d8585ed982876c2c9b6e36463",
+        "anchor_mathematical_digest": "a1d3b3cdc62f9fa939145ebb529821bd381c6b9a150080e75b5f89a75ae3d8d8",
+        "all_origin_parameters_updated": true,
+        "committed_origin_and_anchor_steps": 3972,
+        "origin_fits_executed_this_attempt": 330,
+        "anchor_inherited_compatible_parent": false,
+        "gradient_steps_executed_this_attempt": 3984
+      }
+    }
+  ],
+  "routing": [
+    {
+      "compute_pending_threads": 4,
+      "after_compute_threads": 12
+    },
+    {
+      "compute_pending_threads": 4,
+      "after_compute_threads": 12
+    },
+    {
+      "compute_pending_threads": 4,
+      "after_compute_threads": 12
+    }
+  ],
+  "model_calls": [
+    {
+      "id": 455,
+      "stage": "HYPOTHESES",
+      "state": "SUCCEEDED",
+      "metrics": {
+        "eval_count": 383,
+        "done_reason": "stop",
+        "wall_seconds": 42.2934,
+        "eval_duration": 19927021000,
+        "load_duration": 1789678749,
+        "total_duration": 42291711585,
+        "prompt_eval_count": 2722
+      },
+      "usage_input_tokens": 2722,
+      "usage_output_tokens": 383
+    },
+    {
+      "id": 456,
+      "stage": "TOOL_FEEDBACK_SELECTION",
+      "state": "SUCCEEDED",
+      "metrics": {
+        "eval_count": 103,
+        "done_reason": "stop",
+        "wall_seconds": 15.3412,
+        "eval_duration": 4454597000,
+        "load_duration": 2838130,
+        "total_duration": 15339609247,
+        "prompt_eval_count": 1422
+      },
+      "usage_input_tokens": 1422,
+      "usage_output_tokens": 103
+    }
+  ],
+  "mail_unchanged": true,
+  "report_reason": "WAITING_DRAW_DAY"
+}

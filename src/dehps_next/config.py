@@ -15,6 +15,9 @@ class Settings:
     quota_bytes: int = 256 * 1024 * 1024
     artifact_bytes: int = 16 * 1024 * 1024
     training_threads: int = 2
+    inference_threads: int = 12
+    inference_busy_threads: int = 4
+    cpu_pool: str = "0-19"
 
     @classmethod
     def from_env(cls):
@@ -42,10 +45,21 @@ class Settings:
             training_threads=int(
                 os.getenv("DEHPS_NEXT_TRAINING_THREADS", os.getenv("DEHPS_NEXT_THREADS", "2"))
             ),
+            inference_threads=int(os.getenv("DEHPS_NEXT_INFERENCE_THREADS", "12")),
+            inference_busy_threads=int(os.getenv("DEHPS_NEXT_INFERENCE_BUSY_THREADS", "4")),
+            cpu_pool=os.getenv("DEHPS_NEXT_CPU_POOL", "0-19"),
         )
-        if not 1 <= result.training_threads <= 8:
+        if result.cpu_pool != "0-19" or set(os.sched_getaffinity(0)) != set(range(20)):
+            raise ValueError("Next must run in the registered CPU0-19 pool; reserve20-21 for the host")
+        if any(
+            os.getenv(k, "1") != "1" for k in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS")
+        ):
+            raise ValueError("Use single BLAS/OMP defaults; predictor Torch threads are selected explicitly")
+        if not 1 <= result.inference_busy_threads <= result.inference_threads <= 12:
+            raise ValueError("Invalid local inference thread count")
+        if not 1 <= result.training_threads <= 16:
             raise ValueError("Invalid training thread count")
-        if not 1 <= result.threads <= 8 or not 5 <= result.lease_seconds <= 3600:
+        if not 1 <= result.threads <= 16 or not 5 <= result.lease_seconds <= 3600:
             raise ValueError("Invalid CPU or lease limits")
         if result.poll_seconds < 0.05 or result.quota_bytes < 32 * 1024 * 1024:
             raise ValueError("Invalid polling or storage limits")

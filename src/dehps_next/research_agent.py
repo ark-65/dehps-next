@@ -42,6 +42,12 @@ def request_json(path, payload=None, timeout=180):
         ) from exc
 
 
+def inference_threads(db):
+    """At request start, prioritize actual queued/running compute work over reasoning speed."""
+    busy = db.rows("SELECT 1 FROM jobs WHERE state IN ('READY','RUNNING') AND kind!='RESEARCH_PLAN' LIMIT 1")
+    return db.settings.inference_busy_threads if busy else db.settings.inference_threads
+
+
 def infer(db, artifacts, campaign, job, stage, context, schema, pulse):
     model = os.getenv("DEHPS_NEXT_RESEARCH_MODEL", "qwen3:1.7b")
     inventory = request_json("/api/tags", timeout=15)
@@ -54,7 +60,13 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse):
         "think": False,
         "keep_alive": "2m",
         "format": schema,
-        "options": {"temperature": 0, "seed": 1729, "num_ctx": 4096, "num_predict": 2048, "num_thread": 4},
+        "options": {
+            "temperature": 0,
+            "seed": 1729,
+            "num_ctx": 4096,
+            "num_predict": 2048,
+            "num_thread": inference_threads(db),
+        },
         "messages": [
             {
                 "role": "system",
