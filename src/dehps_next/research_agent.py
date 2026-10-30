@@ -107,6 +107,22 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse):
         with db.pool.connection() as c, c.transaction():
             c.execute("UPDATE research_model_calls SET metrics=%s WHERE id=%s", (Jsonb(metrics), call))
             record(c, call, metrics)
+        # Keep real token receipts even if the provider silently fell back to CPU.
+        metrics["inference_backend"] = db.settings.inference_backend
+        if db.settings.inference_backend == "vulkan":
+            resident = request_json("/api/ps", timeout=15)
+            loaded = next(
+                (m for m in resident.get("models", []) if m.get("digest") == installed["digest"]),
+                {},
+            )
+            size, offloaded = loaded.get("size"), loaded.get("size_vram")
+            metrics["offload"] = {"size": size, "size_vram": offloaded}
+            if type(size) is not int or type(offloaded) is not int or size <= 0 or offloaded < size:
+                raise DomainError(
+                    "LOCAL_GPU_OFFLOAD_REQUIRED", "Measured Vulkan profile requires full model GPU offload"
+                )
+        with db.pool.connection() as c:
+            c.execute("UPDATE research_model_calls SET metrics=%s WHERE id=%s", (Jsonb(metrics), call))
         pulse()
         content = response.get("message", {}).get("content", "")
         response_ref = artifacts.write(
