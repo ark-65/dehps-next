@@ -34,6 +34,8 @@ def numeric_identity():
     # Unknown future edits get a new numeric identity; no blanket compatibility mapping.
     equivalent_compute = {
         "4d6ac973f26418215fee5e15432df5a424135028126ebc53ef87aaec14bdadba": "4e6efa00349cdbb4da980ffab37b2b24c4c6d7c9cfa40b6e885424c8a9d38d78",
+        # Only timeout classification changed to a renewable slice; fitter/RNG/scores unchanged.
+        "bb270358327cbb5f7ee6eafbf2a198749d50243440c2ea13c47ce35ebfef91f8": "4e6efa00349cdbb4da980ffab37b2b24c4c6d7c9cfa40b6e885424c8a9d38d78",
     }
     hashes = {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in names}
     hashes["research_compute.py"] = equivalent_compute.get(

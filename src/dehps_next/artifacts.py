@@ -43,9 +43,9 @@ class Artifacts:
         return total
 
     def ensure_capacity(self, reserve=8 * 1024 * 1024):
-        if self.usage() + reserve > self.settings.quota_bytes or shutil.disk_usage(
-            self.root
-        ).free < reserve + max(20 * 1024**3, shutil.disk_usage(self.root).total * 0.05):
+        if shutil.disk_usage(self.root).free < reserve + max(
+            20 * 1024**3, shutil.disk_usage(self.root).total * 0.05
+        ):
             raise DomainError("STORAGE_QUOTA", "Insufficient owned-runtime or filesystem space")
 
     def write(self, data, *, category="objects", key=None):

@@ -5,6 +5,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
 
+from .domain import now
 from .errors import LeaseLost
 
 
@@ -62,6 +63,12 @@ class Database:
             if not c.execute("SELECT 1 FROM schema_migrations WHERE version=10").fetchone():
                 c.execute(files("dehps_next").joinpath("migrations/010_up.sql").read_text())
                 c.execute("INSERT INTO schema_migrations VALUES(10)")
+            if not c.execute("SELECT 1 FROM schema_migrations WHERE version=11").fetchone():
+                c.execute(files("dehps_next").joinpath("migrations/011_up.sql").read_text())
+                c.execute("INSERT INTO schema_migrations VALUES(11)")
+            if not c.execute("SELECT 1 FROM schema_migrations WHERE version=12").fetchone():
+                c.execute(files("dehps_next").joinpath("migrations/012_up.sql").read_text())
+                c.execute("INSERT INTO schema_migrations VALUES(12)")
 
     def rows(self, sql, params=()):
         with self.pool.connection() as c:
@@ -74,8 +81,8 @@ class Database:
             c.execute("""UPDATE attempts SET state='LOST', ended_at=now()
                 WHERE state='RUNNING' AND id IN
                 (SELECT token FROM jobs WHERE state='RUNNING' AND lease_until<now())""")
-            c.execute("""UPDATE jobs SET state=CASE WHEN failures+1>=3 THEN 'FAILED' ELSE 'READY' END,
-                failures=failures+1,error_code='LEASE_EXPIRED', updated_at=now() WHERE state='RUNNING' AND lease_until<now()""")
+            c.execute("""UPDATE jobs SET state='READY',error_code='LEASE_EXPIRED', updated_at=now()
+                WHERE state='RUNNING' AND lease_until<now()""")
             roles = {"all": "TRUE", "compute": "kind!='RESEARCH_PLAN'", "planning": "kind='RESEARCH_PLAN'"}
             if role not in roles:
                 raise ValueError("Unknown worker role")
@@ -139,10 +146,30 @@ class Database:
             if result.rowcount != 1:
                 raise LeaseLost()
 
-    def checkpoint(self, job, artifact):
+    def checkpoint(self, job, artifact, progress=None):
         with self.pool.connection() as c, c.transaction():
             self.fence(c, job)
             c.execute("UPDATE jobs SET checkpoint=%s WHERE id=%s", (Jsonb(artifact), job["id"]))
+            if progress:
+                from .research_memory import feedback_contract, insert_event
+
+                node, count = progress
+                insert_event(
+                    c,
+                    node,
+                    feedback_contract(node),
+                    "progress:" + job["id"] + ":" + artifact["sha256"],
+                    "FIT_PROGRESS",
+                    {
+                        "job": job["id"],
+                        "attempt": job["token"],
+                        "checkpoint": artifact,
+                        "new_origins": count,
+                        "gradient_steps": count * node["spec"]["epochs"],
+                        "completed_at": now().isoformat(),
+                        "scope": "COMMITTED_PREFIX_ONLY;RECOMPUTED_OR_INCOMPLETE_WORK_EXCLUDED",
+                    },
+                )
 
     def complete(self, c, job):
         self.fence(c, job)

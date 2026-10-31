@@ -40,9 +40,8 @@ class Pipeline:
         def save_checkpoint(data, epoch):
             pulse()
             self.db.heartbeat(job)
-            ref = self.artifacts.write(
-                data, category="checkpoints", key=f"{job['id']}-{job['token']}-{(epoch // 5) % 2}.pt"
-            )
+            ref = self.artifacts.write(data, category="checkpoints")
+            self.artifacts.read(ref)
             self.db.checkpoint(job, ref)
 
         checkpoint = self.artifacts.read(job["checkpoint"]) if job["checkpoint"] else None

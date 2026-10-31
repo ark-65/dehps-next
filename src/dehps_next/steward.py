@@ -256,6 +256,11 @@ class Steward:
         return "RUNNING", name
 
     def maintain(self):
+        from .research_memory import compact_due
+        from .training_observer import sample_due
+
+        observed = sample_due(self.db)
+        compact_due(self.db)
         with self.db.pool.connection() as c, c.transaction():
             c.execute("SELECT pg_advisory_xact_lock(740140)")
             self.resources.reap(c)
@@ -264,8 +269,8 @@ class Steward:
             reconcile(c)
         last = self.db.rows("SELECT payload FROM maintenance_state WHERE id=1")
         if not last or (now() - timestamp(last[0]["payload"]["at"])).total_seconds() >= 30:
-            preview = Lifecycle(self.db, self.artifacts).collect(apply=False)
             sweep = Lifecycle(self.db, self.artifacts).collect(apply=True)
+            preview = {"reason": "LIVE_SWEEP_INCLUDES_CANDIDATE_COUNTS"}
         else:
             preview = sweep = {"reason": "GC_NOT_DUE", "interval_seconds": 30}
-        return {"gc_preview": preview, "gc": sweep, "programs": self.tick()}
+        return {"gc_preview": preview, "gc": sweep, "programs": self.tick(), "soak_samples": observed}

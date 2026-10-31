@@ -78,6 +78,11 @@ def main():
     numeric = commands.add_parser("numeric-adopt")
     numeric.add_argument("--release", required=True)
     numeric.add_argument("--reason", required=True)
+    commands.add_parser("memory-backfill")
+    commands.add_parser("research-recover")
+    soak = commands.add_parser("soak-start")
+    soak.add_argument("--name", required=True)
+    soak.add_argument("--hours", type=int, default=24)
     budget = commands.add_parser("budget-set")
     budget.add_argument("--capacity-seconds", type=int, required=True)
     budget.add_argument("--model-calls", type=int, required=True)
@@ -111,7 +116,7 @@ def main():
     try:
         if args.command == "init":
             db.migrate()
-            output({"schema": 10, "status": "initialized", "runtime": str(settings.runtime)})
+            output({"schema": 12, "status": "initialized", "runtime": str(settings.runtime)})
         elif args.command in ("reporter", "report-prepare", "report-acceptance"):
             from .reports import Reports
 
@@ -162,6 +167,18 @@ def main():
             from .research_memory import adopt_numeric
 
             output(adopt_numeric(db, args.release, args.reason))
+        elif args.command == "memory-backfill":
+            from .research_recovery import backfill
+
+            output(backfill(db))
+        elif args.command == "research-recover":
+            from .research_recovery import recover_failed
+
+            output(recover_failed(db, artifacts))
+        elif args.command == "soak-start":
+            from .training_observer import start
+
+            output(start(db, args.name, args.hours))
         elif args.command == "program-disable":
             db.rows(
                 "UPDATE research_programs SET state='DISABLED',last_reason='Operator disabled automatic next topics' WHERE id=%s RETURNING id",

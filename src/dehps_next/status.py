@@ -35,6 +35,7 @@ def get_status(db, artifacts):
             "full_branch_comparison_and_protected_holdout": "RESEARCH_CAMPAIGNS_SEPARATE;PROTECTED_HOLDOUT_PENDING",
         }
     from .local_usage import summary
+    from .research_memory import memory_status
     from .training_window import status as training_window
 
     with db.pool.connection() as c:
@@ -43,6 +44,11 @@ def get_status(db, artifacts):
     return {
         "token_usage": summary(db),
         "training_window": window,
+        "research_memory": memory_status(db),
+        "training_soaks": db.rows("""SELECT r.*,count(s.sample_at) AS samples,max(s.sample_at) AS last_sample,
+            count(s.sample_at) FILTER(WHERE (s.payload->>'review_required')::boolean) AS flagged_samples
+            FROM research_soaks r LEFT JOIN research_soak_samples s ON s.soak_id=r.id
+            GROUP BY r.id ORDER BY r.started_at DESC LIMIT 10"""),
         "code_digest": code_identity(),
         "mail_schedule": db.rows("SELECT payload FROM report_state"),
         "mail_delivery": db.rows("SELECT state,count(*) AS n FROM mail_deliveries GROUP BY state"),
@@ -50,6 +56,7 @@ def get_status(db, artifacts):
         "runtime_policy": {
             "local_billing": False,
             "usage_admission_limits": False,
+            "research_lifetime_limit": None,
             "research_agent": db.settings.research_agent,
             "research_pipeline_depth": db.settings.research_pipeline_depth,
             "research_validation": db.settings.research_validation,
@@ -73,7 +80,8 @@ def get_status(db, artifacts):
             0
         ]["count"],
         "owned_artifact_bytes": artifacts.usage(),
-        "artifact_quota_bytes": db.settings.quota_bytes,
+        "artifact_quota_bytes": None,
+        "artifact_gc_watermark_bytes": db.settings.quota_bytes,
         "database_bytes": db.rows("SELECT pg_database_size(current_database()) AS bytes")[0]["bytes"],
         "storage_scope": "P3 registered Next artifacts, PostgreSQL/WAL, inference cache, images/log bounds and shared build-cache upper bound",
         "programs": db.rows(

@@ -54,6 +54,9 @@ class Research:
         program_id=None,
         launch_identity=None,
         connection=None,
+        recovery_source=None,
+        recovery_dataset=None,
+        recovery_protocol=None,
     ):
         if planner not in ("rules", "local") or not 2 <= max_nodes <= 8 or not name or len(name) > 80:
             raise DomainError("RESEARCH_POLICY", "Invalid campaign, planner or node budget")
@@ -86,6 +89,8 @@ class Research:
             "inference_policy": "LOCAL_TOKEN_OBSERVATION_ONLY",
             "purpose": "DEVELOPMENT_RESEARCH_NOT_FORMAL_PREDICTION",
         }
+        if recovery_source:
+            config["recovery_source"] = recovery_source
         with nullcontext(connection) if connection else self.db.pool.connection() as c, c.transaction():
             c.execute("SELECT pg_advisory_xact_lock(740134)")
             previous = c.execute("SELECT * FROM research_campaigns WHERE id=%s", (name,)).fetchone()
@@ -93,12 +98,22 @@ class Research:
                 if previous["config"] != config:
                     raise DomainError("CAMPAIGN_CONFLICT", "Existing research config is frozen")
                 return previous
-            dataset = DataService(self.db, self.artifacts).research_snapshot(c)
-            if self.db.settings.research_validation == "recent-windows-v4":
+            if recovery_dataset and recovery_source and recovery_protocol:
+                dataset = c.execute("SELECT * FROM datasets WHERE id=%s", (recovery_dataset,)).fetchone()
+                if not dataset:
+                    raise DomainError("RECOVERY_DATA_MISSING", "Original recovery snapshot is required")
+                protocol = recovery_protocol
+            elif recovery_dataset or recovery_protocol:
+                raise DomainError(
+                    "RECOVERY_CONTRACT_REQUIRED", "Recovery must name its source and original protocol"
+                )
+            elif self.db.settings.research_validation == "recent-windows-v4":
                 from .research_hits import make_protocol as make_recent_protocol
 
+                dataset = DataService(self.db, self.artifacts).research_snapshot(c)
                 protocol = make_recent_protocol(dataset["sample_count"])
             else:
+                dataset = DataService(self.db, self.artifacts).research_snapshot(c)
                 protocol = make_protocol(dataset["sample_count"], recent, historical)
             c.execute(
                 """INSERT INTO research_campaigns(id,config,dataset_id,protocol)
@@ -261,16 +276,18 @@ class Research:
         )
         initial = self.artifacts.read(parent[0]["anchor"]) if parent else None
 
+        committed_prefix = [len(saved["rows"]) if saved else 0]
+
         def checkpoint(payload):
             # Flushing a completed prefix is permitted during pause; fencing is still mandatory.
             self.db.heartbeat(job)
-            slot = (len(payload["rows"]) // 8) % 2
             ref = self.artifacts.write(
                 encode(payload["rows"], payload["identity"]),
                 category="checkpoints",
-                key=f"{job['id']}-{job['token']}-{slot}.pt",
             )
-            self.db.checkpoint(job, ref)
+            self.artifacts.read(ref)
+            self.db.checkpoint(job, ref, progress=(node, max(0, len(payload["rows"]) - committed_prefix[0])))
+            committed_prefix[0] = len(payload["rows"])
 
         # Root prepares the reserve once; children spend the extra fits only after uncertainty.
         include_reserve = not parent or (
@@ -430,11 +447,51 @@ class Research:
                     },
                 )
             self.job(c, node["id"], "RESEARCH_PLAN")
+            from .research_memory import archive_node
+
+            archive_node(
+                c,
+                node["id"],
+                periods=business["periods"] if business else None,
+                origin_provenance=[
+                    {
+                        "origin": row["origin"],
+                        "issue": row["issue"],
+                        "training_through": row["training_through"],
+                        "prior_available_at": snapshot["rows"][row["origin"] - 1]["available_at"],
+                        "target_draw_at": snapshot["rows"][row["origin"]]["draw_at"],
+                        "target_source_id": snapshot["rows"][row["origin"]].get("source_id"),
+                        "weight_digest": row["weight_digest"],
+                        "mathematical_digest": row.get("mathematical_digest"),
+                        "probability_digest": digest([row["red_probabilities"], row["blue_probabilities"]]),
+                    }
+                    for row in scores
+                ],
+            )
             self.db.complete(c, job)
             c.execute("UPDATE jobs SET checkpoint=NULL WHERE id=%s", (job["id"],))
         self.artifacts.cleanup_checkpoints(job["id"])
 
     def plan(self, job, context, pulse):
+        if context["config"].get("recovery_source"):
+            with self.db.pool.connection() as c, c.transaction():
+                self.db.fence(c, job)
+                c.execute(
+                    "UPDATE research_campaigns SET status='COMPLETE',updated_at=now() WHERE id=%s",
+                    (context["campaign_id"],),
+                )
+                self.decision(
+                    c,
+                    context["campaign_id"],
+                    context["id"],
+                    "RECOVERY_COMPLETE",
+                    {
+                        "source": context["config"]["recovery_source"],
+                        "evidence": "RECOVERED_EVALUATION_NOT_CHAMPION_PROMOTION",
+                    },
+                )
+                self.db.complete(c, job)
+            return
         if (
             context["config"].get("proposal_policy") == "candidates-v2"
             and context["config"]["planner"] == "local"

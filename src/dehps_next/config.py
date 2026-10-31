@@ -23,6 +23,8 @@ class Settings:
     research_agent: str = "legacy"
     research_pipeline_depth: int = 1
     research_validation: str = "recent-random-v2"
+    memory_compact_records: int = 16384
+    research_batch_size: int = 256
 
     @classmethod
     def from_env(cls):
@@ -58,9 +60,15 @@ class Settings:
             research_agent=os.getenv("DEHPS_NEXT_RESEARCH_AGENT", "legacy"),
             research_pipeline_depth=int(os.getenv("DEHPS_NEXT_RESEARCH_PIPELINE_DEPTH", "1")),
             research_validation=os.getenv("DEHPS_NEXT_RESEARCH_VALIDATION", "recent-random-v2"),
+            memory_compact_records=int(os.getenv("DEHPS_NEXT_MEMORY_COMPACT_RECORDS", "16384")),
+            research_batch_size=int(os.getenv("DEHPS_NEXT_RESEARCH_BATCH_SIZE", "256")),
         )
         if result.research_validation not in ("recent-random-v2", "recent-windows-v4"):
             raise ValueError("Unknown frozen validation policy")
+        if result.memory_compact_records < 1:
+            raise ValueError("Memory compaction threshold must be positive")
+        if not 4 <= result.research_batch_size <= 256:
+            raise ValueError("Continuation batches must contain4..256 candidates")
         if result.research_agent not in ("legacy", "candidates-v2"):
             raise ValueError("Unknown research proposal policy")
         if result.research_pipeline_depth not in (1, 2):

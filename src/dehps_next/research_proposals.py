@@ -7,7 +7,7 @@ from .errors import DomainError
 from .release import numeric_identity
 from .research_agent import infer
 from .research_math import run_tool
-from .research_memory import known_specs
+from .research_memory import feedback_contract, recall, untried_specs
 from .research_policy import train_policy
 from .research_search import novel_specs
 
@@ -30,20 +30,22 @@ def same_basis(campaign, basis):
 
 
 def feedback(db, campaign, nodes, selected):
-    earlier = db.rows(
-        """SELECT n.* FROM research_nodes n JOIN research_campaigns r ON r.id=n.campaign_id
-        WHERE r.id!=%s AND r.dataset_id=%s AND r.protocol->>'digest'=%s
-          AND r.config->>'numeric_digest'=%s AND (r.config->>'numeric_threads')::int=%s
-          AND n.parent_id IS NOT NULL AND n.evaluation IS NOT NULL
-        ORDER BY n.completed_at DESC,n.id LIMIT 5""",
-        (
-            campaign["id"],
-            campaign["dataset_id"],
-            campaign["protocol"]["digest"],
-            numeric_identity(),
-            campaign["config"]["numeric_threads"],
-        ),
+    stored = db.rows(
+        """SELECT node_id,spec,payload-'period_outcomes'-'origin_provenance' AS payload FROM research_memory_events WHERE contract=%s
+        AND kind='EVALUATION' AND parent_id IS NOT NULL
+        AND payload->>'campaign'!=%s ORDER BY seq DESC LIMIT 5""",
+        (feedback_contract(campaign), campaign["id"]),
     )
+    earlier = [
+        {
+            "id": r["node_id"],
+            "spec": r["spec"],
+            "path": r["payload"]["path"],
+            "decision": r["payload"]["decision"],
+            "evaluation": {"summary": r["payload"]["summary"], "business": r["payload"]["business"]},
+        }
+        for r in stored
+    ]
     current = sorted(
         [n for n in nodes if n["evaluation"] and n["parent_id"]],
         key=lambda n: (n["completed_at"], n["id"]),
@@ -189,6 +191,15 @@ def propose_batch(controller, campaign, nodes, count, job, pulse):
             "promotion": campaign["protocol"]["promotion"],
             "random_history": False,
         }
+    memory = recall(db, campaign)
+    context["memory"] = memory
+    from .research_agent import compact_context
+
+    compact_context(db, campaign, context, candidates, slots, evidence, citable, schema)
+    # The immutable plan basis references exactly the evidence retained in this request.
+    basis["memory"] = context["memory"]
+    basis["feedback_nodes"] = [e["node"] for e in evidence]
+    basis["offered_digest"] = digest([v["spec"] for v in candidates.values()])
     selection, receipt = infer(db, artifacts, campaign, job, "CANDIDATE_SELECTION_V2", context, schema, pulse)
     if (
         set(selection) != set(schema["required"])
@@ -224,7 +235,7 @@ def propose_batch(controller, campaign, nodes, count, job, pulse):
                 "direction_value_model": policy,
                 "hypothesis": selection["change"],
                 "falsification": selection["risk"],
-                "offered_count": len(offered),
+                "offered_count": len(candidates),
                 "novel_pool_count": len(specs),
             }
         )
@@ -322,12 +333,15 @@ def plan_batch(controller, job, context, pulse):
         capacity = min(
             depth - len(pending(current_nodes)), campaign["config"]["max_nodes"] - len(current_nodes)
         )
-        known = {digest(s) for s in known_specs(db, campaign["dataset_id"])}
+        fresh = {
+            digest(s)
+            for s in untried_specs(db, campaign["dataset_id"], [p["spec"] for p in proposals], connection=c)
+        }
         queued, duplicates = 0, 0
         for proposal in proposals:
             if queued >= capacity:
                 break
-            if digest(proposal["spec"]) in known:
+            if digest(proposal["spec"]) not in fresh:
                 duplicates += 1
                 continue
             siblings = sum(n["parent_id"] == current["selected_node"] for n in current_nodes)
@@ -351,7 +365,7 @@ def plan_batch(controller, job, context, pulse):
                     "call_id": proposal["inference"][0]["call_id"],
                 },
             )
-            known.add(digest(proposal["spec"]))
+            fresh.discard(digest(proposal["spec"]))
             queued += 1
         controller.decision(
             c,

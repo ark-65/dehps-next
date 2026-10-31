@@ -7,6 +7,7 @@ import threading
 import time
 
 import torch
+from psycopg.errors import DeadlockDetected, LockNotAvailable, SerializationFailure
 from psycopg.errors import Error as DatabaseError
 
 from .calendar import ZONE
@@ -168,6 +169,8 @@ class Worker:
             )
         except Exception as exc:
             code = exc.code if isinstance(exc, DomainError) else type(exc).__name__
+            if isinstance(exc, (LockNotAvailable, DeadlockDetected, SerializationFailure)):
+                code = "YIELD_DATABASE_CONTENTION"
             try:
                 if code.startswith("YIELD_") or code in (
                     "LOCAL_INFERENCE_UNAVAILABLE",
