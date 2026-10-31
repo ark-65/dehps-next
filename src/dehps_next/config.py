@@ -69,8 +69,12 @@ class Settings:
             raise ValueError("Memory compaction threshold must be positive")
         if not 4 <= result.research_batch_size <= 256:
             raise ValueError("Continuation batches must contain4..256 candidates")
-        if result.research_agent not in ("legacy", "candidates-v2"):
+        if result.research_agent not in ("legacy", "candidates-v2", "candidates-v3"):
             raise ValueError("Unknown research proposal policy")
+        if result.research_agent == "candidates-v3" and result.research_batch_size < 6:
+            raise ValueError("Real two-choice reviews require at least six candidates per batch")
+        if result.research_agent == "candidates-v3" and result.research_validation != "recent-windows-v4":
+            raise ValueError("Grounded cross-round reviews require the frozen100/50/10 hit protocol")
         if result.research_pipeline_depth not in (1, 2):
             raise ValueError("Research queue must have depth1 or2")
         if result.research_agent == "legacy" and result.research_pipeline_depth != 1:

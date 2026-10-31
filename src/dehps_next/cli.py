@@ -116,7 +116,7 @@ def main():
     try:
         if args.command == "init":
             db.migrate()
-            output({"schema": 12, "status": "initialized", "runtime": str(settings.runtime)})
+            output({"schema": 13, "status": "initialized", "runtime": str(settings.runtime)})
         elif args.command in ("reporter", "report-prepare", "report-acceptance"):
             from .reports import Reports
 

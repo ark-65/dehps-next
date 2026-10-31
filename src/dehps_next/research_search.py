@@ -49,7 +49,7 @@ def _radical_inverse(index, base):
     return result
 
 
-def extended_specs(db, dataset, topic):
+def extended_specs(db, dataset, topic, *, minimum=1):
     """Persist each continuation batch and cursor; no repeated grid after exhaustion."""
     from .domain import digest
     from .release import numeric_identity
@@ -64,10 +64,12 @@ def extended_specs(db, dataset, topic):
             AND topic=%s ORDER BY generation DESC LIMIT 1""",
             (dataset, numeric, topic["name"]),
         ).fetchone()
+        carry = []
         if previous:
             fresh = untried_specs(db, dataset, previous["candidates"], connection=c)
-            if fresh:
+            if len(fresh) >= minimum:
                 return fresh
+            carry = fresh
         generation = previous["generation"] + 1 if previous else 1
         cursor = previous["basis"]["next_global_cursor"] if previous else 1
         seeds = c.execute(
@@ -114,7 +116,13 @@ def extended_specs(db, dataset, topic):
             neighbors.append(spec)
         batch_size = db.settings.research_batch_size
         neighbors = untried_specs(db, dataset, neighbors, connection=c)[: batch_size // 2]
-        candidates = list(neighbors)
+        candidates = list(carry)
+        for spec in neighbors:
+            if spec not in candidates:
+                candidates.append(spec)
+        candidates = candidates[:batch_size]
+        neighbor_count = len(candidates) - len(carry)
+        initial_count = len(candidates)
         seen = {digest(s) for s in candidates}
         while len(candidates) < batch_size:
             global_specs = []
@@ -141,8 +149,9 @@ def extended_specs(db, dataset, topic):
                     break
         basis = {
             "policy": "feedback-neighbors-and-halton-v1",
-            "neighbor_count": len(neighbors),
-            "global_count": batch_size - len(neighbors),
+            "neighbor_count": neighbor_count,
+            "global_count": batch_size - initial_count,
+            "carried_untried": len(carry),
             "feedback": seeds,
             "anchors": anchors,
             "next_global_cursor": cursor,

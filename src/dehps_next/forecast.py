@@ -146,6 +146,7 @@ class Forecast:
             + """ AND ds.through_issue=%s
               AND r.protocol->>'version'=%s
               AND NOT (r.config ? 'recovery_source')
+              AND NOT (r.config ? 'study_source')
               AND n.anchor IS NOT NULL
               AND EXISTS(SELECT 1 FROM artifact_catalog ac WHERE ac.path=n.evaluation->'scores'->>'path' AND ac.state!='DELETED')
               AND EXISTS(SELECT 1 FROM artifact_catalog ac WHERE ac.path=n.evaluation->'publication_anchor'->>'path' AND ac.state!='DELETED')

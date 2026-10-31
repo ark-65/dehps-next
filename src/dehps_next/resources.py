@@ -56,9 +56,18 @@ class Resources:
             return "HOST_ACCOUNTING_INCOMPLETE"
         if t["disk_free"] < max(20 * GIB, t["disk_total"] * 0.05):
             return "HOST_LOW_DISK"
-        # All compute/planning/inference quotas fit under both physical and available memory envelopes.
-        if (9 + self.db.settings.origin_processes // 2) * GIB > min(
-            t["memory_total"] * 0.6, t["memory_available"] - 4 * GIB
+        # The profile is a total Next envelope, not an extra allocation on top of
+        # its already resident worker/inference pools. Admission reserves only
+        # the remaining growth while retaining the physical cap and host margin.
+        required = (9 + self.db.settings.origin_processes // 2) * GIB
+        resident = sum(
+            item.get("memory", 0)
+            for name, item in t.get("containers", {}).items()
+            if name == "dehps-next-inference" or name.startswith("dehps-next-p0p1-")
+        )
+        if (
+            max(required, resident) > t["memory_total"] * 0.6
+            or max(0, required - resident) > t["memory_available"] - 4 * GIB
         ):
             return "HOST_MEMORY_PRESSURE"
         return None

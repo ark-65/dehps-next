@@ -66,6 +66,7 @@ def archive_node(c, node_id, *, periods=None, origin_provenance=None):
         "cited_feedback": hypothesis.get("cited_feedback"),
         "hypothesis": hypothesis.get("hypothesis"),
         "risk": hypothesis.get("falsification"),
+        "review_evidence": hypothesis.get("review_evidence"),
         "references": {k: evaluation.get(k) for k in ("scores", "publication_anchor")},
         "evidence": evaluation["evidence"],
         "period_outcomes": periods,

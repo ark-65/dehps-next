@@ -45,6 +45,16 @@ def get_status(db, artifacts):
         "token_usage": summary(db),
         "training_window": window,
         "research_memory": memory_status(db),
+        "candidate_review": {
+            "minimum_options_per_choice": 3 if db.settings.research_agent == "candidates-v3" else None,
+            "feedback_scope": "EXACT_PARENT_OUTCOMES_AND_NUMERIC_VALIDATION_CONTRACT",
+            "recent_choices": db.rows("""SELECT node_id,spec,payload->'review_evidence' AS review
+                FROM research_memory_events WHERE kind='EVALUATION'
+                AND jsonb_typeof(payload->'review_evidence')='object' ORDER BY seq DESC LIMIT 6"""),
+            "comparisons": db.rows("""SELECT s.id,s.sha256,s.created_at,r.payload AS result
+                FROM research_review_studies s LEFT JOIN research_review_results r ON r.study_id=s.id
+                ORDER BY s.created_at DESC LIMIT 5"""),
+        },
         "training_soaks": db.rows("""SELECT r.*,count(s.sample_at) AS samples,max(s.sample_at) AS last_sample,
             count(s.sample_at) FILTER(WHERE (s.payload->>'review_required')::boolean) AS flagged_samples
             FROM research_soaks r LEFT JOIN research_soak_samples s ON s.soak_id=r.id

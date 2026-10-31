@@ -22,7 +22,10 @@ NAMES += ["dehps-next-inference"]
 
 class Docker(http.client.HTTPConnection):
     def __init__(self):
-        super().__init__("localhost", timeout=10)
+        # Image/build-cache accounting can exceed ten seconds during real fits.
+        # Keep a bounded request and the application's90s freshness gate; never
+        # replace missing physical accounting with an optimistic admission.
+        super().__init__("localhost", timeout=30)
 
     def connect(self):
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)

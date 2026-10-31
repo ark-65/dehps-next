@@ -129,7 +129,7 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse):
         sum(len(m["content"].encode()) for m in payload["messages"]) + len(canonical(schema).encode()) + 256
     )
     if (
-        stage == "CANDIDATE_SELECTION_V2"
+        stage.startswith("CANDIDATE_SELECTION_")
         and prompt_upper + payload["options"]["num_predict"] > payload["options"]["num_ctx"]
     ):
         raise DomainError(
@@ -394,7 +394,7 @@ def propose(campaign, nodes, pulse, db, artifacts, job):
 
 def use_local_model(db, campaign, nodes):
     """Revisit local reasoning as evidence accumulates; usage never disables assistance."""
-    if campaign["config"].get("proposal_policy") == "candidates-v2":
+    if campaign["config"].get("proposal_policy") in ("candidates-v2", "candidates-v3"):
         return True
     if db.rows(
         "SELECT 1 FROM research_model_calls WHERE state='FAILED' AND created_at>now()-interval '5 minutes' LIMIT 1"
