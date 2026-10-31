@@ -85,7 +85,7 @@ def create_app(settings=None):
     @app.get("/ready")
     def ready(request: Request):
         try:
-            if not request.app.state.db.rows("SELECT 1 FROM schema_migrations WHERE version=12"):
+            if not request.app.state.db.rows("SELECT 1 FROM schema_migrations WHERE version=13"):
                 return JSONResponse(status_code=503, content={"status": "not_ready"})
             return {"status": "ready"}
         except (DatabaseError, PoolTimeout):

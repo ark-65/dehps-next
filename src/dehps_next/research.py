@@ -57,6 +57,7 @@ class Research:
         recovery_source=None,
         recovery_dataset=None,
         recovery_protocol=None,
+        study_source=None,
     ):
         if planner not in ("rules", "local") or not 2 <= max_nodes <= 8 or not name or len(name) > 80:
             raise DomainError("RESEARCH_POLICY", "Invalid campaign, planner or node budget")
@@ -91,6 +92,8 @@ class Research:
         }
         if recovery_source:
             config["recovery_source"] = recovery_source
+        if study_source:
+            config["study_source"] = study_source
         with nullcontext(connection) if connection else self.db.pool.connection() as c, c.transaction():
             c.execute("SELECT pg_advisory_xact_lock(740134)")
             previous = c.execute("SELECT * FROM research_campaigns WHERE id=%s", (name,)).fetchone()
@@ -210,7 +213,7 @@ class Research:
         hit_mode = node["protocol"]["version"] == HIT_VERSION
         if (
             node["parent_id"]
-            and node["config"].get("proposal_policy") == "candidates-v2"
+            and node["config"].get("proposal_policy") in ("candidates-v2", "candidates-v3")
             and node["config"]["planner"] == "local"
         ):
             from .research_proposals import skip_stale_node
@@ -473,7 +476,7 @@ class Research:
         self.artifacts.cleanup_checkpoints(job["id"])
 
     def plan(self, job, context, pulse):
-        if context["config"].get("recovery_source"):
+        if context["config"].get("recovery_source") or context["config"].get("study_source"):
             with self.db.pool.connection() as c, c.transaction():
                 self.db.fence(c, job)
                 c.execute(
@@ -484,16 +487,21 @@ class Research:
                     c,
                     context["campaign_id"],
                     context["id"],
-                    "RECOVERY_COMPLETE",
+                    "STUDY_EVALUATION_COMPLETE"
+                    if context["config"].get("study_source")
+                    else "RECOVERY_COMPLETE",
                     {
-                        "source": context["config"]["recovery_source"],
-                        "evidence": "RECOVERED_EVALUATION_NOT_CHAMPION_PROMOTION",
+                        "source": context["config"].get("study_source")
+                        or context["config"]["recovery_source"],
+                        "evidence": "STUDY_ONLY_NOT_CHAMPION_PROMOTION"
+                        if context["config"].get("study_source")
+                        else "RECOVERED_EVALUATION_NOT_CHAMPION_PROMOTION",
                     },
                 )
                 self.db.complete(c, job)
             return
         if (
-            context["config"].get("proposal_policy") == "candidates-v2"
+            context["config"].get("proposal_policy") in ("candidates-v2", "candidates-v3")
             and context["config"]["planner"] == "local"
         ):
             from .research_proposals import plan_batch

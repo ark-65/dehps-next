@@ -296,8 +296,18 @@ def plan_batch(controller, job, context, pulse):
             db.complete(c, job)
         return
     try:
-        basis, proposals = propose_batch(
-            controller, campaign, nodes, min(depth, campaign["config"]["max_nodes"] - len(nodes)), job, pulse
+        proposer = propose_batch
+        if campaign["config"].get("proposal_policy") == "candidates-v3":
+            from .research_review import propose_batch_v3
+
+            proposer = propose_batch_v3
+        basis, proposals = proposer(
+            controller,
+            campaign,
+            nodes,
+            min(depth - len(pending(nodes)), campaign["config"]["max_nodes"] - len(nodes)),
+            job,
+            pulse,
         )
     except DomainError as exc:
         if exc.code != "SEARCH_SPACE_EXHAUSTED":
