@@ -129,6 +129,7 @@ class Lifecycle:
             ORDER BY created_at LIMIT 16""",
             (list(keep), list(TERMINAL) + ["BLOCKED_DUPLICATE_RESEARCH_DIRECTION"]),
         ).fetchall()
+        compact_contracts = set()
         for campaign in eligible:
             identity = campaign["id"]
             if c.execute(
@@ -147,6 +148,9 @@ class Lifecycle:
             events = c.execute(
                 "SELECT count(*) AS n FROM research_decisions WHERE campaign_id=%s", (identity,)
             ).fetchone()["n"]
+            from .research_memory import archive_campaign
+
+            compact_contracts.add(archive_campaign(c, identity))
             topic = campaign["topic"] if campaign["program_id"] else "manual"
             c.execute(
                 """INSERT INTO research_rollups(topic,campaigns,nodes,decisions) VALUES(%s,1,%s,%s)
@@ -171,10 +175,11 @@ class Lifecycle:
             )
             c.execute("DELETE FROM research_nodes WHERE campaign_id=%s", (identity,))
             c.execute("DELETE FROM research_campaigns WHERE id=%s", (identity,))
-        # Retain recipe exclusions for the newest eight data/numerics pairs; active data stay rooted.
-        c.execute("""DELETE FROM research_recipe_memory m WHERE (dataset_id,numeric_digest) NOT IN
-            (SELECT dataset_id,numeric_digest FROM research_recipe_memory GROUP BY dataset_id,numeric_digest ORDER BY max(last_seen_at) DESC LIMIT 8)
-            AND NOT EXISTS(SELECT 1 FROM research_campaigns r WHERE r.dataset_id=m.dataset_id AND r.status NOT IN ('BATCH_COMPLETE','BUDGET_EXHAUSTED','COMPLETE','SUPERSEDED','SEARCH_EXHAUSTED') AND r.status NOT LIKE 'BLOCKED_%%')""")
+        from .research_memory import compact
+
+        for contract in compact_contracts:
+            compact(c, contract, reason="BEFORE_GRAPH_RETIREMENT", force=True)
+        # Exact recipe identities and paired memories survive every graph/context compaction.
         c.execute("DELETE FROM local_token_days WHERE day<current_date-32")
         # Preserve lifetime counts while retaining only a bounded recent accounting ledger.
         old = c.execute(

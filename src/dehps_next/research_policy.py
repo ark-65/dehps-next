@@ -36,21 +36,24 @@ def train_policy(db, artifacts, campaign, job):
             campaign["config"]["numeric_threads"],
         ]
     )
-    examples = db.rows(
-        """SELECT n.id,n.spec,n.evaluation,p.evaluation AS parent_evaluation
-        FROM research_nodes n JOIN research_nodes p ON p.id=n.parent_id
-        JOIN research_campaigns r ON r.id=n.campaign_id
-        WHERE n.evaluation IS NOT NULL AND p.evaluation IS NOT NULL
-          AND r.dataset_id=%s AND r.protocol->>'digest'=%s
-          AND r.config->>'numeric_digest'=%s AND (r.config->>'numeric_threads')::int=%s
-        ORDER BY n.completed_at DESC,n.id LIMIT 128""",
-        (
-            campaign["dataset_id"],
-            campaign["protocol"]["digest"],
-            numeric_identity(),
-            campaign["config"]["numeric_threads"],
-        ),
+    records = db.rows(
+        """SELECT node_id,spec,payload-'period_outcomes'-'origin_provenance' AS payload FROM research_memory_events WHERE contract=%s
+        AND kind='EVALUATION' AND parent_id IS NOT NULL
+        AND payload->'parent_summary' IS NOT NULL ORDER BY seq DESC LIMIT 128""",
+        (contract,),
     )
+    examples = [
+        {
+            "id": r["node_id"],
+            "spec": r["spec"],
+            "evaluation": {"summary": r["payload"]["summary"], "business": r["payload"]["business"]},
+            "parent_evaluation": {
+                "summary": r["payload"]["parent_summary"],
+                "business": r["payload"]["decision"].get("business", {}).get("parent"),
+            },
+        }
+        for r in records
+    ]
     examples.reverse()
     torch.manual_seed(1729)
     model = nn.Sequential(nn.Linear(12, 16), nn.Tanh(), nn.Linear(16, 1))

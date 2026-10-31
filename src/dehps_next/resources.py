@@ -56,18 +56,6 @@ class Resources:
             return "HOST_ACCOUNTING_INCOMPLETE"
         if t["disk_free"] < max(20 * GIB, t["disk_total"] * 0.05):
             return "HOST_LOW_DISK"
-        if t["owned_upper_bytes"] >= 85 * GIB:
-            return "NEXT_HIGH_WATER"
-        limits = {
-            "database": 10 * GIB,
-            "environment": 20 * GIB,
-            "inference": 8 * GIB,
-            "staging": 7 * GIB,
-            "logs": 3 * GIB,
-            "backups": 10 * GIB,
-        }
-        if any(t["categories"][key] >= limit for key, limit in limits.items()):
-            return "CATEGORY_STORAGE_LIMIT"
         # All compute/planning/inference quotas fit under both physical and available memory envelopes.
         if (9 + self.db.settings.origin_processes // 2) * GIB > min(
             t["memory_total"] * 0.6, t["memory_available"] - 4 * GIB
@@ -148,16 +136,7 @@ class Resources:
             cpu = int(core["config"]["recipe"].get("threads", self.db.settings.training_threads))
             wall, write = 600, 64 * 1024**2
         reason = None
-        lifetime = c.execute(
-            "SELECT coalesce(sum(wall_seconds),0) AS n FROM resource_reservations WHERE job_id=%s AND state!='ACTIVE'",
-            (job["id"],),
-        ).fetchone()["n"]
-        if research and not closing and lifetime >= 600:
-            c.execute(
-                "UPDATE jobs SET state='FAILED',error_code='RESEARCH_LIFETIME_BUDGET' WHERE id=%s",
-                (job["id"],),
-            )
-            return None
+        # A renewable execution slice is not a lifetime or consumption allowance.
         if c.execute(
             "SELECT 1 FROM resource_reservations WHERE state='ACTIVE' AND replace(lane,'core_','')=%s",
             (lane,),
@@ -174,7 +153,10 @@ class Resources:
         pending = c.execute(
             "SELECT coalesce(sum(greatest(0,write_reserved-written)),0) AS n FROM resource_reservations WHERE state='ACTIVE'"
         ).fetchone()["n"]
-        if self.db.artifacts.usage() + pending + write > self.db.settings.quota_bytes:
+        import shutil
+
+        space = shutil.disk_usage(self.db.artifacts.root)
+        if space.free < int(pending) + write + max(20 * GIB, space.total * 0.05):
             reason = reason or "WAITING_WRITE_RESERVATION"
         if reason:
             c.execute(

@@ -325,7 +325,7 @@ def compute_node(
     def bounded_pulse():
         pulse()
         if time.monotonic() - start > seconds:
-            raise DomainError("RESEARCH_TIME_BUDGET", "Per-attempt compute budget exhausted")
+            raise DomainError("YIELD_COMPUTE_SLICE", "Save completed origins and renew the execution slice")
 
     results = _origin_results(matrix, spec, protocol, remaining, bounded_pulse, processes, threads)
     try:

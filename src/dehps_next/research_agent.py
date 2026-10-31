@@ -48,6 +48,56 @@ def inference_threads(db):
     return db.settings.inference_busy_threads if busy else db.settings.inference_threads
 
 
+def compact_context(db, campaign, context, candidates, slots, evidence, citable, schema):
+    """Use a conservative UTF-8 upper bound; preserve exact IDs and factual citations.
+
+    Qwen's byte-level tokenizer cannot exceed the number of input UTF-8 bytes. Reserve
+    additional chat framing, a short system message and 1024 generated tokens in4096.
+    """
+    from .research_memory import recall
+
+    def size():
+        return len(canonical({"context": context, "format": schema}).encode())
+
+    if size() <= 2400:
+        return
+    context["memory"] = recall(db, campaign, force=True, reason="CONTEXT_COMPACTION")
+    context["memory"] = {k: context["memory"][k] for k in ("contract", "version", "cursor", "sha256")}
+    context.pop("math_tools", None)
+    context.pop("value_model", None)
+    context.pop("question", None)
+    context["task"] = (
+        "Choose a novel ID per slot;cite evidence_key;explain change/risk.No unvalidated gain claims."
+    )
+    context["acceptance"] = "Improve red5+/blueTop1 recent100;neither declines in100/50/10.No50% gate."
+    # The current parent plus an actual failed/uncertain direction take precedence.
+    relevant = [evidence[0]]
+    uncertain = next((e for e in evidence if e["key"] in citable), None)
+    if uncertain and uncertain not in relevant:
+        relevant.append(uncertain)
+    evidence[:] = relevant
+    citable[:] = [e["key"] for e in relevant if e["key"] in citable]
+    schema["properties"]["evidence_key"]["enum"] = citable
+    context["observed_feedback"] = [
+        {k: e[k] for k in ("key", "spec", "hit_windows", "paired_hit_deltas") if k in e} for e in evidence
+    ]
+    for key in list(candidates):
+        candidates[key].pop("estimated_reward", None)
+    # Reduce each disjoint slot evenly, rather than silently truncating the input.
+    while size() > 2400 and any(len(v) > 1 for v in slots.values()):
+        for key in slots:
+            if len(slots[key]) > 1:
+                removed = slots[key].pop()
+                if all(removed not in ids for ids in slots.values()):
+                    candidates.pop(removed, None)
+    if size() > 2400:
+        # Keep all paired numerical facts; remove redundant specs from prompt feedback.
+        for item in context["observed_feedback"]:
+            item.pop("spec", None)
+    if size() > 2400:
+        raise DomainError("MEMORY_CONTEXT_TOO_LARGE", "Durable memory saved; factual context cannot fit")
+
+
 def infer(db, artifacts, campaign, job, stage, context, schema, pulse):
     model = os.getenv("DEHPS_NEXT_RESEARCH_MODEL", "qwen3:1.7b")
     inventory = request_json("/api/tags", timeout=15)
@@ -64,17 +114,27 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse):
             "temperature": 0,
             "seed": 1729,
             "num_ctx": 4096,
-            "num_predict": 2048,
+            "num_predict": 1024,
             "num_thread": inference_threads(db),
         },
         "messages": [
             {
                 "role": "system",
-                "content": "You are a bounded mathematics research agent. Reply in English JSON only. Use evidence, state falsifiable hypotheses, never claim lottery predictability. You cannot change scoring, resource safeguards, data or execute code. Use only supplied paired verdicts as evidence. reserve_used is not a verdict. An inconclusive result is not a regression. Use the exact candidate method names. Prior failures must influence your next direction. /no_think",
+                "content": "Reply in English JSON only.Use exact candidate IDs and evidence keys.Consider supplied failures and uncertainty.No unvalidated prediction claims.No code execution or scoring changes./no_think",
             },
             {"role": "user", "content": canonical(context)},
         ],
     }
+    prompt_upper = (
+        sum(len(m["content"].encode()) for m in payload["messages"]) + len(canonical(schema).encode()) + 256
+    )
+    if (
+        stage == "CANDIDATE_SELECTION_V2"
+        and prompt_upper + payload["options"]["num_predict"] > payload["options"]["num_ctx"]
+    ):
+        raise DomainError(
+            "MEMORY_CONTEXT_TOO_LARGE", "Persist and compact before inference; never truncate facts"
+        )
     request_ref = artifacts.write(canonical(payload).encode(), category="research/inference")
     with db.pool.connection() as c, c.transaction():
         db.fence(c, job)
@@ -103,6 +163,8 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse):
             )
         }
         metrics["wall_seconds"] = round(time.monotonic() - started, 4)
+        metrics["prompt_utf8_token_upper_bound"] = prompt_upper
+        metrics["context_capacity"] = payload["options"]["num_ctx"]
         # Token receipts describe real local generation even if the worker lease, JSON or candidate validation fails.
         with db.pool.connection() as c, c.transaction():
             c.execute("UPDATE research_model_calls SET metrics=%s WHERE id=%s", (Jsonb(metrics), call))
