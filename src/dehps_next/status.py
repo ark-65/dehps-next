@@ -36,6 +36,7 @@ def get_status(db, artifacts):
         }
     from .local_usage import summary
     from .research_memory import memory_status
+    from .research_selection import selection_status
     from .training_window import status as training_window
 
     with db.pool.connection() as c:
@@ -45,8 +46,11 @@ def get_status(db, artifacts):
         "token_usage": summary(db),
         "training_window": window,
         "research_memory": memory_status(db),
+        "qwen_selection": selection_status(db),
         "candidate_review": {
-            "minimum_options_per_choice": 3 if db.settings.research_agent == "candidates-v3" else None,
+            "minimum_options_per_choice": 3
+            if db.settings.research_agent in ("candidates-v3", "candidates-v4")
+            else None,
             "feedback_scope": "EXACT_PARENT_OUTCOMES_AND_NUMERIC_VALIDATION_CONTRACT",
             "recent_choices": db.rows("""SELECT node_id,spec,payload->'review_evidence' AS review
                 FROM research_memory_events WHERE kind='EVALUATION'
