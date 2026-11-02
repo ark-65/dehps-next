@@ -18,7 +18,7 @@ from dehps_next.artifacts import Artifacts
 from dehps_next.config import Settings
 from dehps_next.db import Database
 from dehps_next.domain import digest
-from dehps_next.errors import DomainError
+from dehps_next.errors import DomainError, LeaseLost
 from dehps_next.research import Research
 from dehps_next.research_agent import request_json
 from dehps_next.research_review import counts
@@ -32,7 +32,17 @@ SEEDS = (1729, 43107)
 
 def profile(model, thinking, digest_value):
     return {
-        "selector_contract": "comparative-v4.2",
+        "selector_contract": "comparative-v4.4",
+        "ground_output_schema": True,
+        "transport": "ndjson-progress-v1",
+        "repetition_guard": "8_IDENTICAL_CONSECUTIVE_256_CHARACTER_BLOCKS",
+        "backend": {
+            "image": "sha256:b2f0122c476bc9fe7ce679d8bb4bd555351e25e2554eefb156f61cb0a89cf429",
+            "engine": "Vulkan",
+            "flash_attention": True,
+            "kv_cache": "q8_0",
+            "cpu_threads": 4,
+        },
         "model": model,
         "model_digest": digest_value,
         "think": thinking,
@@ -42,8 +52,8 @@ def profile(model, thinking, digest_value):
             "top_k": 20,
             "min_p": 0,
             "seed": 1729,
-            "num_ctx": 8192,
-            "num_predict": 1536,
+            "num_ctx": 40960,
+            "num_predict": 32768,
         },
     }
 
@@ -187,7 +197,7 @@ def review_one(d, a, campaign, header, row, config, arm, variant, seed, *, count
 
     def pulse():
         if lost:
-            raise RuntimeError(lost)
+            raise LeaseLost()
         d.heartbeat(job)
 
     def keep():
@@ -233,6 +243,10 @@ def review_one(d, a, campaign, header, row, config, arm, variant, seed, *, count
                 "proof": proof,
             }
         except (DomainError, RuntimeError) as e:
+            if isinstance(e, DomainError) and (e.code.startswith("YIELD_") or e.code == "LEASE_LOST"):
+                if e.code != "LEASE_LOST":
+                    d.defer(job, e.code, seconds=15)
+                raise
             payload = {
                 "valid": False,
                 "correct": False,
@@ -246,6 +260,21 @@ def review_one(d, a, campaign, header, row, config, arm, variant, seed, *, count
         t.join(2)
         Resources(d).finish(job["token"], time.monotonic() - start, 0)
         a.reservation_token = None
+
+
+def recoverable_review(*args, **kwargs):
+    """Retry only an unperformed infrastructure slot, with identical frozen input/seed."""
+    while True:
+        try:
+            return review_one(*args, **kwargs)
+        except DomainError as exc:
+            if not exc.code.startswith("YIELD_") and exc.code != "LEASE_LOST":
+                raise
+            print(
+                json.dumps({"infrastructure_deferred": exc.code, "logical_choice_recorded": False}),
+                flush=True,
+            )
+            time.sleep(15)
 
 
 def run_profile(d, a, header, config):
@@ -291,7 +320,7 @@ def run_profile(d, a, header, config):
                         "SELECT 1 FROM research_review_selections WHERE study_id=%s AND pair=%s AND arm=%s",
                         (study, row["pair"], key),
                     ):
-                        payload = review_one(d, a, campaign, header, row, config, arm, variant, seed)
+                        payload = recoverable_review(d, a, campaign, header, row, config, arm, variant, seed)
                         with d.pool.connection() as c:
                             c.execute(
                                 "INSERT INTO research_review_selections(study_id,pair,arm,payload) VALUES(%s,%s,%s,%s)",

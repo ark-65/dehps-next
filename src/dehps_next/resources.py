@@ -93,6 +93,44 @@ class Resources:
             WHERE r.state='ACTIVE' AND (j.id IS NULL OR (j.state!='RUNNING' AND j.updated_at<now()-interval '60 seconds') OR j.lease_until<now()) FOR UPDATE OF r""").fetchall():
             self.settle(c, r, r["wall_cap"], state="EXPIRED_CHARGED_FULL", full=True)
 
+    def renew_local_stream(self, job):
+        """A live local generation renews its planning slice, never its physical allocation."""
+        import time
+
+        if (
+            not job.get("local_stream_active")
+            or time.monotonic() - job.get("local_stream_progress_at", 0) > 180
+        ):
+            raise DomainError("LOCAL_STREAM_STALLED", "No recent local generation progress")
+        with self.db.pool.connection() as c, c.transaction():
+            self.db.fence(c, job)
+            row = c.execute(
+                """SELECT *,extract(epoch FROM (now()-created_at)) AS elapsed
+                FROM resource_reservations WHERE token=%s AND state='ACTIVE' FOR UPDATE""",
+                (job["token"],),
+            ).fetchone()
+            if not row or row["lane"] != "planning":
+                raise DomainError("LEASE_LOST", "A live planning reservation is required")
+            cap = row["wall_cap"]
+            if row["elapsed"] >= cap - 5:
+                reason = self.pressure()
+                if reason:
+                    raise DomainError(
+                        "YIELD_" + reason, "Save partial inference and wait for physical recovery"
+                    )
+                # Retain reservation accounting without imposing a cumulative quota.
+                growth = max(420, float(row["elapsed"]) - cap + 420)
+                c.execute(
+                    "UPDATE resource_reservations SET wall_cap=wall_cap+%s,cpu_reserved=cpu_reserved+cpu_cap*%s WHERE token=%s",
+                    (growth, growth, job["token"]),
+                )
+                c.execute(
+                    "UPDATE resource_days SET reserved=reserved+%s WHERE day=%s",
+                    (row["cpu_cap"] * growth, row["day"]),
+                )
+                cap += growth
+            job["admission"]["wall_cap"] = cap
+
     def admit(self, c, job, token, at=None):
         c.execute("SELECT pg_advisory_xact_lock(740140)")
         self.reap(c)
