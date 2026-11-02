@@ -23,10 +23,11 @@ from dehps_next.domain import digest
 from dehps_next.release import code_identity, numeric_identity
 from dehps_next.research import Research
 from dehps_next.research_compute import close_origin_pool
-from dehps_next.research_hits import review
+from dehps_next.research_hits import measure, review
 from dehps_next.research_memory import untried_specs
 from dehps_next.research_review import cross_round_feedback
 from dehps_next.research_selection import activate
+from dehps_next.scores import decode
 from dehps_next.worker import Worker
 
 mechanism = SourceFileLoader(
@@ -111,6 +112,8 @@ def prepare(db, artifacts, study, mechanism_study):
         "parent_campaign": name,
         "parent_spec": base,
         "parent_business": parent["evaluation"]["business"],
+        "parent_scores": parent["evaluation"]["scores"],
+        "parent_model": parent["evaluation"]["publication_anchor"],
         "source_dataset": campaign["dataset_id"],
         "validation": campaign["protocol"],
         "numeric": numeric_identity(),
@@ -169,7 +172,7 @@ def choose(db, artifacts, study):
             ):
                 continue
             # Identical presentation, model, context and sampling seed in both arms.
-            payload = mechanism.review_one(
+            payload = mechanism.recoverable_review(
                 db, artifacts, campaign, header, row, header["profile"], arm, "base", 1729, count=2
             )
             with db.pool.connection() as c:
@@ -186,6 +189,30 @@ def evaluate(db, artifacts, study):
     ]
     assert locked == 48
     header = db.rows("SELECT protocol FROM research_review_studies WHERE id=%s", (study,))[0]["protocol"]
+    if header["numeric"] != numeric_identity() or header["code"] != code_identity():
+        raise RuntimeError("The frozen effect study cannot silently change numerical or controller source")
+    snapshot = json.loads(
+        artifacts.read(
+            db.rows("SELECT artifact FROM datasets WHERE id=%s", (header["source_dataset"],))[0]["artifact"]
+        )
+    )
+    parent_business = measure(
+        decode(artifacts.read(header["parent_scores"]))["rows"], snapshot, header["validation"]
+    )
+    planner = Worker(db, artifacts, role="planning", worker_id="selection-effect-finalize")
+
+    def finish_study_planning():
+        while db.rows(
+            """SELECT 1 FROM jobs j JOIN research_nodes n ON n.id=j.research_node_id
+            JOIN research_campaigns r ON r.id=n.campaign_id
+            WHERE r.config->'study_source'->>'id'=%s AND j.kind='RESEARCH_PLAN'
+            AND j.state IN ('READY','RUNNING') LIMIT 1""",
+            (study,),
+        ):
+            if not planner.once():
+                time.sleep(1)
+
+    finish_study_planning()
     for row in db.rows("SELECT * FROM research_review_pairs WHERE study_id=%s ORDER BY pair", (study,)):
         for i, spec in enumerate(row["basis"]["offered"]):
             identity = digest(spec)
@@ -205,7 +232,10 @@ def evaluate(db, artifacts, study):
                 study_source={"id": study, "pair": row["pair"], "candidate": i},
             )
             node = compute(db, artifacts, name)
-            decision = review(header["parent_business"], node["evaluation"]["business"], header["validation"])
+            child_business = measure(
+                decode(artifacts.read(node["evaluation"]["scores"]))["rows"], snapshot, header["validation"]
+            )
+            decision = review(parent_business, child_business, header["validation"])
             deltas = decision["business"]["paired_windows"]
             reward = sum(deltas["recent"].values()) - sum(
                 max(-v, 0) for w in deltas.values() for v in w.values()
@@ -223,6 +253,7 @@ def evaluate(db, artifacts, study):
                     "INSERT INTO research_review_evaluations(study_id,spec_digest,node_id,payload) VALUES(%s,%s,%s,%s)",
                     (study, identity, node["id"], Jsonb(payload)),
                 )
+            finish_study_planning()
             print(
                 json.dumps(
                     {"pool": row["pair"], "candidate": i, "reward": reward, "verdict": decision["verdict"]}
@@ -239,6 +270,13 @@ def collect(db, artifacts, study):
     assert len(outcomes) == 144
     rows = db.rows("SELECT * FROM research_review_selections WHERE study_id=%s", (study,))
     assert len(rows) == 48
+    progress = db.rows(
+        """SELECT coalesce(sum((m.payload->>'new_origins')::bigint),0) AS origins,
+        coalesce(sum((m.payload->>'gradient_steps')::bigint),0) AS steps
+        FROM research_memory_events m WHERE m.kind='FIT_PROGRESS' AND m.node_id IN
+        (SELECT node_id FROM research_review_evaluations WHERE study_id=%s)""",
+        (study,),
+    )[0]
     chosen = {}
     arm_valid = {}
     rewards = {}
@@ -296,12 +334,12 @@ def collect(db, artifacts, study):
             and set(chosen[i, "feedback"]) == set(chosen[i, "no_feedback"])
             for i in range(24)
         ),
-        "fresh_origin_fits": sum(
-            o["execution"]["origin_fits_executed_this_attempt"] for o in outcomes.values()
-        ),
-        "gradient_steps": sum(
+        "fresh_origin_fits": progress["origins"],
+        "historical_origin_gradient_steps": progress["steps"],
+        "gradient_steps_last_successful_attempt_only": sum(
             o["execution"]["gradient_steps_executed_this_attempt"] for o in outcomes.values()
         ),
+        "execution_count_scope": "UNIQUE_COMMITTED_ORIGIN_PREFIXES_ACROSS_ALL_RESUMED_ATTEMPTS;ANCHOR_STEPS_SEPARATE",
         "comparison": comparison,
         "scope": "DEVELOPMENT_ONLY;NOT_FORWARD",
     }

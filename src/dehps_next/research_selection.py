@@ -24,6 +24,12 @@ def selection_status(db):
         "state": state[0] if state else None,
         "sources": db.rows("SELECT source,count(*) AS n FROM qwen_selection_audits GROUP BY source"),
         "recent_qwen_slots": len(positions),
+        "active_inference": db.rows("""SELECT id,campaign_id,model,created_at,
+            metrics->'wall_seconds' AS observed_wall_seconds,
+            metrics->'stream_bytes_observed' AS output_bytes_observed,
+            metrics->'stream_chunks_observed' AS chunks_not_tokens,
+            metrics->>'count_scope' AS receipt_scope
+            FROM research_model_calls WHERE state='RESERVED' ORDER BY id DESC LIMIT 1"""),
         "first_position_fraction": sum(p["position"] == 0 for p in positions) / len(positions)
         if positions
         else None,
@@ -68,7 +74,15 @@ def make_context(
         "Each assessment must compare utility or risk in at most twelve words, not repeat a candidate name.",
         "groups": groups,
         "candidates": [
-            {"id": key, "spec": candidates[key], "changes": changes(parent, candidates[key])}
+            {
+                "id": key,
+                "spec": candidates[key],
+                "changes": changes(parent, candidates[key]),
+                "observed_evidence_keys": [e["key"] for e in evidence if e["spec"] == candidates[key]],
+                "known_utility": next(
+                    (e.get("known_utility") for e in evidence if e["spec"] == candidates[key]), None
+                ),
+            }
             for group in groups.values()
             for key in group
         ],
@@ -279,6 +293,16 @@ def mechanism_metrics(db, study, profile):
     for r in rows:
         p = r["payload"]
         if not p["valid"]:
+            if p.get("error") not in {
+                "INVALID_COMPARATIVE_SELECTION",
+                "INVALID_LOCAL_REPLY",
+                "LOCAL_MODEL_TRUNCATED",
+                "LOCAL_MODEL_REPETITION",
+            }:
+                raise DomainError(
+                    "MECHANISM_NOT_VALIDATED",
+                    "An infrastructure interruption is not a performed semantic choice",
+                )
             continue
         receipt = p["receipt"]
         seed = int(r["arm"].split(":")[-1])
@@ -292,6 +316,7 @@ def mechanism_metrics(db, study, profile):
             or not m.get("eval_count")
             or not gpu.get("size")
             or gpu.get("size_vram", 0) < gpu["size"]
+            or gpu.get("context_length") != profile["options"]["num_ctx"]
             or digest(p["proof"]["context"]) != p["proof"]["input_digest"]
         ):
             raise DomainError(
@@ -333,7 +358,7 @@ def activate(db, profile, study):
     actual = mechanism_metrics(db, study, profile)
     if (
         r.get("profile_id") != identity
-        or profile.get("selector_contract") != "comparative-v4.2"
+        or profile.get("selector_contract") != "comparative-v4.4"
         or not r.get("passed")
         or r.get("executed_feedback") != 72
         or r.get("executed_no_feedback") != 72
@@ -437,7 +462,7 @@ def propose_batch_v4(controller, campaign, nodes, count, job, pulse):
             with db.pool.connection() as c, c.transaction():
                 db.fence(c, job)
                 c.execute(
-                    "UPDATE qwen_selection_state SET reason=%s,retry_after=CASE WHEN %s IN ('QWEN_POSITION_BIAS','INVALID_COMPARATIVE_SELECTION','INVALID_LOCAL_REPLY','LOCAL_MODEL_TRUNCATED','LOCAL_MODEL_DIGEST_MISMATCH') THEN NULL ELSE now()+interval '60 seconds' END,updated_at=now() WHERE id=1",
+                    "UPDATE qwen_selection_state SET reason=%s,retry_after=CASE WHEN %s IN ('QWEN_POSITION_BIAS','INVALID_COMPARATIVE_SELECTION','INVALID_LOCAL_REPLY','LOCAL_MODEL_TRUNCATED','LOCAL_MODEL_DIGEST_MISMATCH','LOCAL_MODEL_CONTEXT_MISMATCH','LOCAL_MODEL_REPETITION') THEN NULL ELSE now()+interval '60 seconds' END,updated_at=now() WHERE id=1",
                     (reason, reason),
                 )
             picks = []

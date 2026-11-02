@@ -132,6 +132,7 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse, *, profil
         ],
     }
     if profile:
+        payload["stream"] = profile.get("transport") == "ndjson-progress-v1"
         payload["think"] = profile["think"]
         payload["options"].update(profile["options"])
         payload["options"]["num_thread"] = inference_threads(db)
@@ -140,8 +141,12 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse, *, profil
             "Compare all candidates using supplied evidence. IDs are labels, not ranks. "
             "Known trial scores are facts; unknown outcomes stay unknown. Never invent future scores."
         )
+        if profile.get("ground_output_schema"):
+            payload["messages"][1]["content"] = canonical({**context, "output_contract": schema})
     prompt_upper = (
-        sum(len(m["content"].encode()) for m in payload["messages"]) + len(canonical(schema).encode()) + 256
+        sum(len(m["content"].encode()) for m in payload["messages"])
+        + (0 if profile and profile.get("ground_output_schema") else len(canonical(schema).encode()))
+        + 256
     )
     if (
         stage.startswith("CANDIDATE_SELECTION_")
@@ -164,8 +169,31 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse, *, profil
     metrics = None
     from .local_usage import record
 
+    def stream_progress(value):
+        nonlocal metrics
+        metrics = {
+            **value,
+            "selection_profile": profile,
+            "wall_seconds": round(time.monotonic() - started, 4),
+            "context_capacity": payload["options"]["num_ctx"],
+        }
+        # Partial provider output is durable evidence, not a completed token receipt.
+        with db.pool.connection() as c:
+            c.execute("UPDATE research_model_calls SET metrics=%s WHERE id=%s", (Jsonb(metrics), call))
+
+    def stream_pulse():
+        from .resources import Resources
+
+        Resources(db).renew_local_stream(job)
+        pulse()
+
     try:
-        response = request_json("/api/chat", payload, timeout=300 if profile else 180)
+        if payload["stream"]:
+            from .research_stream import chat
+
+            response = chat(payload, stream_progress, stream_pulse, job)
+        else:
+            response = request_json("/api/chat", payload, timeout=300 if profile else 180)
         metrics = {
             key: response.get(key)
             for key in (
@@ -183,6 +211,7 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse, *, profil
         if profile:
             metrics["selection_profile"] = profile
             metrics["raw_completion"] = response.get("message", {}).get("content", "")
+            metrics["raw_thinking"] = response.get("message", {}).get("thinking", "")
         # Token receipts describe real local generation even if the worker lease, JSON or candidate validation fails.
         with db.pool.connection() as c, c.transaction():
             c.execute("UPDATE research_model_calls SET metrics=%s WHERE id=%s", (Jsonb(metrics), call))
@@ -196,10 +225,22 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse, *, profil
                 {},
             )
             size, offloaded = loaded.get("size"), loaded.get("size_vram")
-            metrics["offload"] = {"size": size, "size_vram": offloaded}
+            metrics["offload"] = {
+                "size": size,
+                "size_vram": offloaded,
+                "context_length": loaded.get("context_length"),
+            }
             if type(size) is not int or type(offloaded) is not int or size <= 0 or offloaded < size:
                 raise DomainError(
                     "LOCAL_GPU_OFFLOAD_REQUIRED", "Measured Vulkan profile requires full model GPU offload"
+                )
+            if (
+                profile
+                and payload["stream"]
+                and loaded.get("context_length") != payload["options"]["num_ctx"]
+            ):
+                raise DomainError(
+                    "LOCAL_MODEL_CONTEXT_MISMATCH", "Actual context differs from the frozen profile"
                 )
         with db.pool.connection() as c:
             c.execute("UPDATE research_model_calls SET metrics=%s WHERE id=%s", (Jsonb(metrics), call))
