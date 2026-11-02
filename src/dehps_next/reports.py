@@ -184,17 +184,21 @@ class Reports:
                         "PRE_FINAL",
                         target["issue"],
                         {
-                            **{k: reference[k] for k in ("blue", "tickets", "reference")},
-                            "title": f"[DEHPS Next] {target['issue']}期Top100研究参考与开奖前校验报告",
+                            **{k: reference[k] for k in ("blue", "tickets", "reference", "parent_fallback")},
+                            "title": f"[DEHPS Next] {target['issue']}期剪枝父节点Top100回退封存报告",
                             "send_deadline_utc": target["deadline_time"].astimezone(UTC).isoformat(),
                             "lines": [
                                 *self.revision_lines(target["issue"]),
-                                "17:00收尾时仍没有完成合格候选封存，本期无通过门槛的正式推荐。",
+                                "17:00收尾时无通过原有正式资格门槛的候选；已封存剪枝保留父模型的Top100与唯一蓝球，独立结算。",
                                 f"{'近100期、近50期、近10期' if self.db.settings.research_validation == 'recent-windows-v4' else '近100期、近10期与历史抽样'}核验状态：{state['draft']['state']}",
-                                f"校验未通过原因：{(state['draft'].get('gate') or {}).get('reasons', ['尚无完整验证结果'])}",
+                                f"本轮正式候选校验原因：{(state['draft'].get('gate') or {}).get('reasons', ['尚无完整验证结果'])}",
                                 "17:00停止训练并收尾复核，完成即封存、发送，不等待19:00；19:30仅为故障兜底截止。本期官方开奖号核验后自动恢复训练。",
                                 "提前验收预测已保留为验收记录，不算本期正式报告；业务覆盖缺口如实计入。50%目标未建立。",
                                 *reference["lines"],
+                                self.validation_line(
+                                    reference["reference"]["validation"]["windows"],
+                                    reference["reference"]["validation"].get("business"),
+                                ),
                             ],
                         },
                         "STATUS",
@@ -228,6 +232,10 @@ class Reports:
             )
             if prior and prior[0]["payload"].get("reference"):
                 payload = prior[0]["payload"]
+                if payload.get("parent_fallback"):
+                    from .retained_parent import settle
+
+                    settle(self.db, missed["issue"])
                 matches = [len(set(ticket) & set(missed["red"])) for ticket in payload["tickets"]]
                 reference_lines = [
                     f"开奖前冻结研究参考蓝球{payload['blue']:02d}：{'命中' if payload['blue'] == missed['blue'] else '未命中'}；红球Top100最高命中{max(matches)}/6。",
@@ -240,7 +248,9 @@ class Reports:
                     "title": f"[DEHPS Next] {missed['issue']}期开奖结果与研究状态",
                     "lines": [
                         f"官方开奖号：{missed['red']} + {missed['blue']:02d}",
-                        "本期最终报告截止前未完成合格封存，无正式预测可结算；业务指定期次计为未命中并记录覆盖缺口。",
+                        "正式资格未通过；开奖前父节点回退封存已单独结算，未混入合格推荐统计。"
+                        if prior and prior[0]["payload"].get("parent_fallback")
+                        else "本期最终报告截止前未完成合格封存，无正式预测可结算；业务指定期次计为未命中并记录覆盖缺口。",
                         "不会拿提前验收预测、历史回放或开奖后预测补造本期命中。50%目标未建立。",
                         *reference_lines,
                     ],
