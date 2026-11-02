@@ -10,6 +10,7 @@ from .research_agent import infer
 from .research_memory import recall
 from .research_policy import train_policy
 from .research_review import candidate_pool, changes, counts, cross_round_feedback
+from .research_selection_evidence import SEMANTIC_FAILURES, mechanism_progress, observe_positions
 
 
 def selection_status(db):
@@ -35,6 +36,7 @@ def selection_status(db):
         else None,
         "mechanism_studies": db.rows("""SELECT study_id,payload FROM research_review_results
             WHERE payload->>'kind'='MECHANISM_PROFILE_V4' ORDER BY created_at DESC LIMIT 6"""),
+        "mechanism_progress": mechanism_progress(db),
         "effect_studies": effects,
         "feedback_effectiveness": (
             "DEVELOPMENT_COMPARISON_BENEFIT"
@@ -184,6 +186,7 @@ def select(
         pulse,
         profile=profile,
     )
+    observation = observe_positions(context, reply)
     try:
         if list(reply) != ["assessments", "rankings", "selection"]:
             raise ValueError("Candidate assessment must precede ranking and selection")
@@ -243,7 +246,9 @@ def select(
                 "UPDATE research_model_calls SET state='FAILED',metrics=metrics||%s WHERE id=%s",
                 (Jsonb({"failure_code": "INVALID_COMPARATIVE_SELECTION"}), receipt["call_id"]),
             )
-        raise DomainError("INVALID_COMPARATIVE_SELECTION", str(exc)) from exc
+        failure = DomainError("INVALID_COMPARATIVE_SELECTION", str(exc))
+        failure.position_observation = observation
+        raise failure from exc
     return (
         picks,
         receipt,
@@ -293,12 +298,7 @@ def mechanism_metrics(db, study, profile):
     for r in rows:
         p = r["payload"]
         if not p["valid"]:
-            if p.get("error") not in {
-                "INVALID_COMPARATIVE_SELECTION",
-                "INVALID_LOCAL_REPLY",
-                "LOCAL_MODEL_TRUNCATED",
-                "LOCAL_MODEL_REPETITION",
-            }:
+            if p.get("error") not in SEMANTIC_FAILURES:
                 raise DomainError(
                     "MECHANISM_NOT_VALIDATED",
                     "An infrastructure interruption is not a performed semantic choice",

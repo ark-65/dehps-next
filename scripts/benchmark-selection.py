@@ -19,11 +19,13 @@ from dehps_next.config import Settings
 from dehps_next.db import Database
 from dehps_next.domain import digest
 from dehps_next.errors import DomainError, LeaseLost
+from dehps_next.release import code_identity
 from dehps_next.research import Research
 from dehps_next.research_agent import request_json
 from dehps_next.research_review import counts
 from dehps_next.research_selection import make_context, select
 from dehps_next.resources import Resources
+from dehps_next.training_window import status as training_window
 
 CORPUS = "qwen-mechanism-corpus-20261102-v2"
 CONTEXT = CORPUS + "-context"
@@ -72,13 +74,20 @@ def prepare(d, a):
         "gate": {"accuracy": 0.9, "stability": 0.8, "first_position_max": 0.5, "feedback_lift": 0.2},
         "futility": "Stop a profile only when even every remaining feedback request correct cannot reach90percent;unexecuted requests remain NOT_RUN. No positive early stopping.",
         "driver_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "controller_source": code_identity(),
         "scope": "HISTORICAL_REASONING_PROBE;ZERO_NEW_FITS;NOT_FORWARD",
         "parent_spec": old["parent_spec"],
         "parent_business": old["parent_business"],
         "source_dataset": old["source_dataset"],
         "validation": old["validation"],
     }
-    if not d.rows("SELECT 1 FROM research_review_studies WHERE id=%s", (CORPUS,)):
+    existing = d.rows("SELECT protocol FROM research_review_studies WHERE id=%s", (CORPUS,))
+    if existing and (
+        existing[0]["protocol"].get("driver_sha256") != header["driver_sha256"]
+        or existing[0]["protocol"].get("controller_source") != header["controller_source"]
+    ):
+        raise RuntimeError("Use the frozen driver/source or a new explicitly linked recovery corpus")
+    if not existing:
         outcomes = {
             r["spec_digest"]: r["payload"]
             for r in d.rows(
@@ -198,6 +207,9 @@ def review_one(d, a, campaign, header, row, config, arm, variant, seed, *, count
     def pulse():
         if lost:
             raise LeaseLost()
+        with d.pool.connection() as c:
+            if training_window(c)["paused"]:
+                raise DomainError("YIELD_DRAW_PAUSE", "Resume only after complete official verification")
         d.heartbeat(job)
 
     def keep():
@@ -252,6 +264,7 @@ def review_one(d, a, campaign, header, row, config, arm, variant, seed, *, count
                 "correct": False,
                 "error": getattr(e, "code", type(e).__name__),
                 "message": str(e)[:400],
+                "position_observation": getattr(e, "position_observation", None),
             }
         d.defer(job, "YIELD_MECHANISM_REQUEST", seconds=0)
         return payload
@@ -288,6 +301,7 @@ def run_profile(d, a, header, config):
         "profile": config,
         "profile_id": identity,
         "corpus": CORPUS,
+        "context_campaign": CONTEXT,
         "corpus_sha": d.rows("SELECT sha256 FROM research_review_studies WHERE id=%s", (CORPUS,))[0][
             "sha256"
         ],
