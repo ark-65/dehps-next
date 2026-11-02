@@ -36,6 +36,17 @@ mechanism = SourceFileLoader(
 SEED = 43107
 
 
+def require_frozen(header):
+    if (
+        header["numeric"] != numeric_identity()
+        or header["code"] != code_identity()
+        or header["driver_sha256"] != hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+        or header["mechanism_driver_sha256"]
+        != hashlib.sha256(Path(mechanism.__file__).read_bytes()).hexdigest()
+    ):
+        raise RuntimeError("Use the frozen effect source and both frozen drivers")
+
+
 def compute(db, artifacts, name):
     worker = Worker(db, artifacts, role="compute", worker_id="selection-effect-compute")
     while True:
@@ -47,12 +58,15 @@ def compute(db, artifacts, name):
 
 
 def prepare(db, artifacts, study, mechanism_study):
+    existing = db.rows("SELECT protocol FROM research_review_studies WHERE id=%s", (study,))
+    if existing:
+        require_frozen(existing[0]["protocol"])
     passed = db.rows("SELECT payload FROM research_review_results WHERE study_id=%s", (mechanism_study,))[0][
         "payload"
     ]
     config = passed["profile"]
     activate(db, config, mechanism_study)  # Recomputes all four gates from144 immutable requests.
-    if db.rows("SELECT 1 FROM research_review_studies WHERE id=%s", (study,)):
+    if existing:
         return
     old = db.rows("SELECT protocol FROM research_review_studies WHERE id=%s", (mechanism_study,))[0][
         "protocol"
@@ -119,6 +133,7 @@ def prepare(db, artifacts, study, mechanism_study):
         "numeric": numeric_identity(),
         "code": code_identity(),
         "driver_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "mechanism_driver_sha256": hashlib.sha256(Path(mechanism.__file__).read_bytes()).hexdigest(),
         "primary": "mean delta_red100+delta_blue100-minus-all-negative-deltas-in100/50/10",
         "secondary": "unchanged paired100/50/10 promotion fraction",
         "analysis": "24 paired pools;one-sided exact sign-flip via integer lattice DP;fixed10000 paired bootstrap95percent;positive difference and p<=.05 only;no extension",
@@ -148,6 +163,7 @@ def prepare(db, artifacts, study, mechanism_study):
 
 def choose(db, artifacts, study):
     header = db.rows("SELECT protocol FROM research_review_studies WHERE id=%s", (study,))[0]["protocol"]
+    require_frozen(header)
     assert not db.rows("SELECT 1 FROM research_review_evaluations WHERE study_id=%s", (study,))
     campaign = db.rows("SELECT * FROM research_campaigns WHERE id=%s", (header["parent_campaign"],))[0]
     parent = db.rows("SELECT * FROM research_nodes WHERE campaign_id=%s", (header["parent_campaign"],))[0]
@@ -189,8 +205,7 @@ def evaluate(db, artifacts, study):
     ]
     assert locked == 48
     header = db.rows("SELECT protocol FROM research_review_studies WHERE id=%s", (study,))[0]["protocol"]
-    if header["numeric"] != numeric_identity() or header["code"] != code_identity():
-        raise RuntimeError("The frozen effect study cannot silently change numerical or controller source")
+    require_frozen(header)
     snapshot = json.loads(
         artifacts.read(
             db.rows("SELECT artifact FROM datasets WHERE id=%s", (header["source_dataset"],))[0]["artifact"]
@@ -263,6 +278,8 @@ def evaluate(db, artifacts, study):
 
 
 def collect(db, artifacts, study):
+    header = db.rows("SELECT protocol FROM research_review_studies WHERE id=%s", (study,))[0]["protocol"]
+    require_frozen(header)
     outcomes = {
         r["spec_digest"]: r["payload"]
         for r in db.rows("SELECT * FROM research_review_evaluations WHERE study_id=%s", (study,))
