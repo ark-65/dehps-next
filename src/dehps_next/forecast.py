@@ -216,61 +216,9 @@ class Forecast:
         return None
 
     def reference(self, target):
-        """Frozen report numbers even when formal eligibility fails; never a qualified selection."""
-        candidates = self.candidates(cutoff=target["prepare_time"], reference=True)
-        if candidates:
-            node, gate = candidates[0]
-            snapshot = json.loads(self.artifacts.read(node["data_artifact"]))
-            prediction = predict_anchor(
-                self.artifacts.read(node["evaluation"]["publication_anchor"]), snapshot["rows"]
-            )
-            source = {
-                "kind": "COMPLETED_NEURAL_ANCHOR",
-                "node": node["id"],
-                "path": node["path"],
-                "completed_at": node["completed_at"].isoformat(),
-                "spec": node["spec"],
-                "anchor_sha256": node["evaluation"]["publication_anchor"]["sha256"],
-                "validation": gate,
-            }
-            label = "暂停前已完成的神经网络候选"
-        else:
-            with self.db.pool.connection() as c:
-                dataset = DataService(self.db, self.artifacts).snapshot(
-                    c, cutoff=target["prepare_time"], target_draw_at=target["draw_time"], mode="FORWARD"
-                )
-            snapshot = json.loads(self.artifacts.read(dataset["artifact"]))
-            prediction = historical_baseline(snapshot["rows"])
-            source = {
-                "kind": "HISTORICAL_FREQUENCY_BASELINE",
-                "dataset": dataset["id"],
-                "validation": {"eligible": False, "reasons": ["NO_COMPLETED_NEURAL_VALIDATION"]},
-            }
-            label = "冻结历史频率基线；不是神经网络合格候选"
-        if any(
-            timestamp(row["available_at"]) > target["prepare_time"]
-            or timestamp(row["draw_at"]) >= target["draw_time"]
-            for row in snapshot["rows"]
-        ):
-            raise DomainError(
-                "REFERENCE_DATA_BOUNDARY", "Reference contains data beyond17:00 or target labels"
-            )
-        return {
-            "blue": prediction["blue_top1"],
-            "tickets": prediction["red_top100"],
-            "reference": {
-                **source,
-                "scope": "RESEARCH_REFERENCE_NOT_FORMAL_RECOMMENDATION",
-                "through_issue": snapshot["rows"][-1]["issue"],
-                "blue_probabilities": prediction["blue_probabilities"],
-                "red_probabilities": prediction.get("red_probabilities"),
-            },
-            "lines": [
-                f"研究参考 Top100 来源：{label}；历史截至{snapshot['rows'][-1]['issue']}。",
-                f"开发验证状态：{source['validation'].get('reasons', [])}；本次未作为正式合格推荐。",
-                "下列红球Top100与唯一蓝球Top1仅作研究参考；不计为通过门槛的正式推荐，正式覆盖缺口仍如实保留。",
-            ],
-        }
+        from .retained_parent import seal
+
+        return seal(self.db, self.artifacts, target, self.clock)
 
     def seal(self, target):
         clock = self.clock().astimezone(ZONE)

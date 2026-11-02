@@ -55,6 +55,19 @@ def get_status(db, artifacts):
                 FROM research_review_studies s LEFT JOIN research_review_results r ON r.study_id=s.id
                 ORDER BY s.created_at DESC LIMIT 5"""),
         },
+        "parent_reports": {
+            "heads": db.rows("SELECT * FROM retained_parent_heads"),
+            "restored_report_evidence": db.rows(
+                "SELECT report_id,payload,created_at FROM report_model_evidence ORDER BY created_at DESC LIMIT 10"
+            ),
+            "fallback_seals": db.rows(
+                "SELECT issue,version_id,created_at,payload->'reference' AS source FROM parent_fallback_seals ORDER BY created_at DESC LIMIT 10"
+            ),
+            "fallback_settlements": db.rows(
+                "SELECT * FROM parent_fallback_settlements ORDER BY created_at DESC LIMIT 10"
+            ),
+            "scope": "PARENT_FALLBACK_SEPARATE_FROM_QUALIFIED_STATISTICS",
+        },
         "training_soaks": db.rows("""SELECT r.*,count(s.sample_at) AS samples,max(s.sample_at) AS last_sample,
             count(s.sample_at) FILTER(WHERE (s.payload->>'review_required')::boolean) AS flagged_samples
             FROM research_soaks r LEFT JOIN research_soak_samples s ON s.soak_id=r.id

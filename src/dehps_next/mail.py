@@ -53,7 +53,9 @@ class Mail:
         p = report["payload"]
         lines = [p["title"], "", *p["lines"]]
         heading = (
-            "研究参考红球Top100 / 蓝球Top1（非正式合格推荐）"
+            "剪枝父节点回退红球Top100 / 唯一蓝球Top1（独立结算）"
+            if p.get("parent_fallback")
+            else "研究参考红球Top100 / 蓝球Top1（非正式合格推荐）"
             if p.get("reference")
             else "红球 Top100 / 唯一蓝球 Top1"
         )

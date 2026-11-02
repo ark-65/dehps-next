@@ -79,6 +79,12 @@ class Lifecycle:
             add(row["evidence"], True)
         for row in c.execute("SELECT evidence FROM forecast_final_selections"):
             add(row["evidence"], True)
+        for row in c.execute("""SELECT v.snapshot FROM retained_parent_versions v
+            JOIN retained_parent_heads h ON v.id=h.version_id OR v.id=h.previous_version"""):
+            add(row["snapshot"], True)
+        for table in ("parent_fallback_seals", "report_model_evidence"):
+            for row in c.execute(f"SELECT payload FROM {table}"):
+                add(row["payload"], True)
         core_datasets = {r["dataset_id"] for r in c.execute("SELECT DISTINCT dataset_id FROM cycles")}
         campaigns = c.execute("SELECT * FROM research_campaigns ORDER BY created_at DESC").fetchall()
         keep_campaigns = {

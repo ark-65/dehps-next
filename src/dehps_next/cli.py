@@ -28,6 +28,7 @@ def main():
     commands = parser.add_subparsers(dest="command", required=True)
     for name in (
         "init",
+        "parent-pin",
         "sync",
         "status",
         "token-usage",
@@ -116,7 +117,11 @@ def main():
     try:
         if args.command == "init":
             db.migrate()
-            output({"schema": 13, "status": "initialized", "runtime": str(settings.runtime)})
+            output({"schema": 14, "status": "initialized", "runtime": str(settings.runtime)})
+        elif args.command == "parent-pin":
+            from .retained_parent import bootstrap
+
+            output({"retained_parents": bootstrap(db, artifacts)})
         elif args.command in ("reporter", "report-prepare", "report-acceptance"):
             from .reports import Reports
 

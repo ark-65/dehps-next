@@ -429,6 +429,9 @@ class Research:
                     (node["id"], Jsonb(anchor_ref), node["campaign_id"]),
                 )
                 self.decision(c, node["campaign_id"], node["id"], verdict["verdict"], verdict)
+                from .retained_parent import register
+
+                register(c, self.artifacts, node["id"])
             else:
                 restored = restore_anchor(self.artifacts.read(parent[0]["anchor"]))
                 c.execute(
