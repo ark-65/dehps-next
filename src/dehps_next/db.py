@@ -75,6 +75,9 @@ class Database:
             if not c.execute("SELECT 1 FROM schema_migrations WHERE version=14").fetchone():
                 c.execute(files("dehps_next").joinpath("migrations/014_up.sql").read_text())
                 c.execute("INSERT INTO schema_migrations VALUES(14)")
+            if not c.execute("SELECT 1 FROM schema_migrations WHERE version=15").fetchone():
+                c.execute(files("dehps_next").joinpath("migrations/015_up.sql").read_text())
+                c.execute("INSERT INTO schema_migrations VALUES(15)")
 
     def rows(self, sql, params=()):
         with self.pool.connection() as c:

@@ -26,6 +26,7 @@ def same_basis(campaign, basis):
         and campaign["config"]["code_digest"] == basis["code_digest"]
         and campaign["config"]["numeric_digest"] == basis["numeric_digest"]
         and campaign["config"]["numeric_threads"] == basis["numeric_threads"]
+        and campaign["config"].get("selection_profile_id") == basis.get("selection_profile_id")
     )
 
 
@@ -301,6 +302,10 @@ def plan_batch(controller, job, context, pulse):
             from .research_review import propose_batch_v3
 
             proposer = propose_batch_v3
+        elif campaign["config"].get("proposal_policy") == "candidates-v4":
+            from .research_selection import propose_batch_v4
+
+            proposer = propose_batch_v4
         basis, proposals = proposer(
             controller,
             campaign,
@@ -372,7 +377,8 @@ def plan_batch(controller, job, context, pulse):
                     "from_node": current["selected_node"],
                     "to_path": path,
                     "basis": basis,
-                    "call_id": proposal["inference"][0]["call_id"],
+                    "call_id": proposal["inference"][0]["call_id"] if proposal["inference"] else None,
+                    "selection_source": proposal.get("source"),
                 },
             )
             fresh.discard(digest(proposal["spec"]))

@@ -17,7 +17,11 @@ from .research_policy import train_policy
 
 def endpoint():
     url = os.getenv("DEHPS_NEXT_RESEARCH_URL", "")
-    if url not in ("http://next-inference:11434", "http://127.0.0.1:11435"):
+    if url not in (
+        "http://next-inference:11434",
+        "http://127.0.0.1:11435",
+        "http://next-review-inference:11434",
+    ):
         raise DomainError(
             "LOCAL_INFERENCE_CONFIGURATION", "Configure the accepted Next-local inference endpoint"
         )
@@ -98,12 +102,14 @@ def compact_context(db, campaign, context, candidates, slots, evidence, citable,
         raise DomainError("MEMORY_CONTEXT_TOO_LARGE", "Durable memory saved; factual context cannot fit")
 
 
-def infer(db, artifacts, campaign, job, stage, context, schema, pulse):
-    model = os.getenv("DEHPS_NEXT_RESEARCH_MODEL", "qwen3:1.7b")
+def infer(db, artifacts, campaign, job, stage, context, schema, pulse, *, profile=None):
+    model = profile["model"] if profile else os.getenv("DEHPS_NEXT_RESEARCH_MODEL", "qwen3:1.7b")
     inventory = request_json("/api/tags", timeout=15)
     installed = next((m for m in inventory["models"] if m["name"] == model), None)
     if not installed:
         raise DomainError("LOCAL_MODEL_MISSING", "Selected local model is not installed")
+    if profile and installed["digest"] != profile["model_digest"]:
+        raise DomainError("LOCAL_MODEL_DIGEST_MISMATCH", "Selection model changed after mechanism validation")
     payload = {
         "model": model,
         "stream": False,
@@ -125,6 +131,15 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse):
             {"role": "user", "content": canonical(context)},
         ],
     }
+    if profile:
+        payload["think"] = profile["think"]
+        payload["options"].update(profile["options"])
+        payload["options"]["num_thread"] = inference_threads(db)
+        payload["messages"][0]["content"] = (
+            "Reply in English JSON: assessments first, rankings second, selection last. "
+            "Compare all candidates using supplied evidence. IDs are labels, not ranks. "
+            "Known trial scores are facts; unknown outcomes stay unknown. Never invent future scores."
+        )
     prompt_upper = (
         sum(len(m["content"].encode()) for m in payload["messages"]) + len(canonical(schema).encode()) + 256
     )
@@ -150,7 +165,7 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse):
     from .local_usage import record
 
     try:
-        response = request_json("/api/chat", payload)
+        response = request_json("/api/chat", payload, timeout=300 if profile else 180)
         metrics = {
             key: response.get(key)
             for key in (
@@ -165,6 +180,9 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse):
         metrics["wall_seconds"] = round(time.monotonic() - started, 4)
         metrics["prompt_utf8_token_upper_bound"] = prompt_upper
         metrics["context_capacity"] = payload["options"]["num_ctx"]
+        if profile:
+            metrics["selection_profile"] = profile
+            metrics["raw_completion"] = response.get("message", {}).get("content", "")
         # Token receipts describe real local generation even if the worker lease, JSON or candidate validation fails.
         with db.pool.connection() as c, c.transaction():
             c.execute("UPDATE research_model_calls SET metrics=%s WHERE id=%s", (Jsonb(metrics), call))
@@ -218,6 +236,10 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse):
                 (Jsonb(failure), call),
             )
             record(c, call, failure)
+        if profile and isinstance(exc, (ValueError, KeyError, TypeError, AttributeError)):
+            raise DomainError(
+                "INVALID_LOCAL_REPLY", "Local model response did not satisfy the comparison contract"
+            ) from exc
         raise
 
 
@@ -394,7 +416,7 @@ def propose(campaign, nodes, pulse, db, artifacts, job):
 
 def use_local_model(db, campaign, nodes):
     """Revisit local reasoning as evidence accumulates; usage never disables assistance."""
-    if campaign["config"].get("proposal_policy") in ("candidates-v2", "candidates-v3"):
+    if campaign["config"].get("proposal_policy") in ("candidates-v2", "candidates-v3", "candidates-v4"):
         return True
     if db.rows(
         "SELECT 1 FROM research_model_calls WHERE state='FAILED' AND created_at>now()-interval '5 minutes' LIMIT 1"

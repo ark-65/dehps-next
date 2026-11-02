@@ -96,6 +96,9 @@ class Research:
             config["study_source"] = study_source
         with nullcontext(connection) if connection else self.db.pool.connection() as c, c.transaction():
             c.execute("SELECT pg_advisory_xact_lock(740134)")
+            if self.db.settings.research_agent == "candidates-v4":
+                active = c.execute("SELECT profile_id FROM qwen_selection_state WHERE id=1").fetchone()
+                config["selection_profile_id"] = active["profile_id"] if active else None
             previous = c.execute("SELECT * FROM research_campaigns WHERE id=%s", (name,)).fetchone()
             if previous:
                 if previous["config"] != config:
@@ -213,7 +216,7 @@ class Research:
         hit_mode = node["protocol"]["version"] == HIT_VERSION
         if (
             node["parent_id"]
-            and node["config"].get("proposal_policy") in ("candidates-v2", "candidates-v3")
+            and node["config"].get("proposal_policy") in ("candidates-v2", "candidates-v3", "candidates-v4")
             and node["config"]["planner"] == "local"
         ):
             from .research_proposals import skip_stale_node
@@ -504,7 +507,7 @@ class Research:
                 self.db.complete(c, job)
             return
         if (
-            context["config"].get("proposal_policy") in ("candidates-v2", "candidates-v3")
+            context["config"].get("proposal_policy") in ("candidates-v2", "candidates-v3", "candidates-v4")
             and context["config"]["planner"] == "local"
         ):
             from .research_proposals import plan_batch

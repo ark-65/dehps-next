@@ -117,7 +117,7 @@ def main():
     try:
         if args.command == "init":
             db.migrate()
-            output({"schema": 14, "status": "initialized", "runtime": str(settings.runtime)})
+            output({"schema": 15, "status": "initialized", "runtime": str(settings.runtime)})
         elif args.command == "parent-pin":
             from .retained_parent import bootstrap
 
