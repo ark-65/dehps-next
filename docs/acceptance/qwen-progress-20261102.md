@@ -32,10 +32,13 @@ upper bound5379; with32768 output capacity it fits40960 context. This was input
 inspection, not new training.
 
 The follow-up driver waits for the existing frozen approved model sequence. If
-its otherwise-passing result contains an infrastructure void, a new linked corpus
+any tested profile contains an infrastructure void, including a rejected earlier
+profile or a sequence with no claimed pass, a new linked corpus
 carries every performed answer, including wrong ones, without overwriting the
 source. Only physical voids are retried with identical inputs/seeds; all original
-failures remain. If corrected qualification fails, remaining approved models are
+failures remain. Negative futility cannot rely on physical voids, and an earlier
+profile's interrupted evidence cannot be skipped to select a later model.
+If corrected qualification fails, remaining approved models are
 tested in the original order. A clean first pass alone enables the fixed24-pool
 comparison; all48 arm choices precede144 evaluations. The follow-up is restart-safe
 from persisted slots/evaluations and never activates the primary profile or sends
