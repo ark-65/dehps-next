@@ -154,20 +154,20 @@ def run(db, artifacts, corpus, study):
     state, profiles, chosen = ready(db, corpus)
     if state == "WAITING":
         return {"state": state, "corpus": corpus}
-    if state == "NO_PROFILE_PASSED":
-        return {
-            "state": state,
-            "effect_study_started": False,
-            "scope": "NO_QWEN_BENEFIT_CLAIM;PRIMARY_FALLBACK_UNCHANGED",
-        }
     invalid = db.rows(
-        "SELECT payload FROM research_review_selections WHERE study_id=%s AND NOT (payload->>'valid')::boolean",
-        (chosen["id"],),
+        "SELECT payload FROM research_review_selections WHERE study_id=ANY(%s) AND NOT (payload->>'valid')::boolean",
+        ([row["id"] for row in profiles.values()],),
     )
     if any(r["payload"].get("error") not in SEMANTIC_FAILURES for r in invalid):
         mechanism_study = continuation(db, artifacts, corpus, profiles)
         if not mechanism_study:
             return {"state": "NO_RECOVERED_PROFILE_PASSED", "effect_study_started": False}
+    elif state == "NO_PROFILE_PASSED":
+        return {
+            "state": state,
+            "effect_study_started": False,
+            "scope": "NO_QWEN_BENEFIT_CLAIM;PRIMARY_FALLBACK_UNCHANGED",
+        }
     else:
         mechanism_study = chosen["id"]
     completed = db.rows("SELECT payload FROM research_review_results WHERE study_id=%s", (mechanism_study,))[
