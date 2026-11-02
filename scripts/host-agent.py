@@ -175,8 +175,14 @@ def sample():
         images[development["Image"]] = container_image_size(development)
     base = get("/images/dehps-next-dependencies:p0p1/json")
     images[base["Id"]] = base["Size"]
-    df = get("/system/df")
-    shared_cache = sum(item.get("Size", 0) for item in df.get("BuildCache", []))
+    # Docker's global disk-usage scan can stall for minutes while a model generates.
+    # Bound shared cache by its entire backing device instead of treating a slow
+    # optional accounting scan as missing physical memory/disk telemetry. This is
+    # deliberately an upper bound, never reported as attributed Next consumption.
+    docker_root = Path("/var/lib/docker")
+    if docker_root.stat().st_dev != ROOT.stat().st_dev:
+        raise RuntimeError("Verify Docker storage accounting on the separately mounted device")
+    shared_cache = disk.total
     # Only the Next PostgreSQL volume, measured inside its own named container.
     pg = int(
         subprocess.check_output(
@@ -215,12 +221,13 @@ def sample():
         "categories": categories,
         "containers": containers,
         "shared_build_cache_upper_bytes": shared_cache,
+        "shared_build_cache_accounting": "WHOLE_BACKING_DEVICE_UPPER_BOUND;NOT_OBSERVED_CACHE_USAGE",
         "owned_upper_bytes": sum(categories.values())
         + shared_cache
         + repo
         + other
         + sum(c["writable_bytes"] for c in containers.values()),
-        "accounting": "logical image sizes and configured log maxima are conservative; all shared build cache charged to total upper bound",
+        "accounting": "conservative logical images/log maxima plus whole-device shared-cache bound; physical admission uses fresh free disk and memory",
     }
 
 
