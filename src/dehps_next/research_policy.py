@@ -8,8 +8,9 @@ from torch import nn
 
 from .domain import digest
 from .model import encode_torch, load_torch, weight_digest
+from .multiscale import METHODS as DYNAMIC_METHODS
 
-METHODS = ("raw", "fft", "ridge", "newton")
+METHODS = ("raw", "fft", "ridge", "newton", *DYNAMIC_METHODS)
 
 
 def features(spec, parent_summary):
@@ -56,7 +57,7 @@ def train_policy(db, artifacts, campaign, job):
     ]
     examples.reverse()
     torch.manual_seed(1729)
-    model = nn.Sequential(nn.Linear(12, 16), nn.Tanh(), nn.Linear(16, 1))
+    model = nn.Sequential(nn.Linear(len(METHODS) + 8, 16), nn.Tanh(), nn.Linear(16, 1))
     previous = db.rows(
         "SELECT artifact FROM research_policy_versions WHERE metrics->>'feedback_contract'=%s ORDER BY id DESC LIMIT 1",
         (contract,),

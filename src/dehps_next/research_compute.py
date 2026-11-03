@@ -20,11 +20,15 @@ from .model import Recipe, RedBlueNet, encode_torch, load_torch, vectors, weight
 
 
 def validate_spec(spec):
+    from .multiscale import METHODS, validate
+
     allowed = {"method", "window", "hidden", "epochs", "learning_rate", "weight_decay", "train_history"}
-    if set(spec) != allowed or spec["method"] not in ("raw", "fft", "ridge", "newton"):
+    if set(spec) != allowed or spec["method"] not in ("raw", "fft", "ridge", "newton", *METHODS):
         raise DomainError("INVALID_RESEARCH_SPEC", "Unknown feature, method or parameter")
     if any(type(spec[k]) is not int for k in ("window", "hidden", "epochs", "train_history")):
         raise DomainError("INVALID_RESEARCH_SPEC", "Integer model parameters required")
+    if spec["method"] in METHODS:
+        return validate(spec)
     Recipe(
         window=spec["window"],
         hidden=spec["hidden"],
@@ -67,6 +71,10 @@ def _features(windows, method):
 
 def fit_prior(prior, spec, seed, pulse, initial=None):
     validate_spec(spec)
+    from .multiscale import fit, is_dynamic
+
+    if is_dynamic(spec):
+        return fit(prior, spec, seed, pulse, initial)
     torch.manual_seed(seed)
     torch.use_deterministic_algorithms(True)
     window = spec["window"]
@@ -400,6 +408,13 @@ def compute_node(
 def restore_anchor(data):
     anchor = load_torch(data)
     spec = anchor["spec"]
+    from .multiscale import is_dynamic, restore
+
+    if is_dynamic(spec):
+        restore(anchor)
+        return {"weight_digest": anchor["weight_digest"], "optimizer_digest": anchor["optimizer_digest"],
+                "rng_restored": True, "rng_digest": state_hash(torch.get_rng_state()),
+                "mathematical_digest": anchor["mathematical_digest"], "through_issue": anchor["through_issue"]}
     model = RedBlueNet(Recipe(window=spec["window"], hidden=spec["hidden"]))
     model.load_state_dict(anchor["model"])
     optimizer = torch.optim.Adam(model.parameters())
@@ -429,6 +444,16 @@ def predict_anchor(data, rows):
     spec = anchor["spec"]
     if anchor["through_issue"] != rows[-1]["issue"]:
         raise DomainError("ANCHOR_DATA_CHANGED", "Current anchor must cover exactly the validated dataset")
+    from .multiscale import is_dynamic, predict
+
+    if is_dynamic(spec):
+        red, blue = predict(anchor, vectors(rows))
+        from .domain import top_red_combinations
+
+        return {"red_probabilities": red.tolist(), "blue_probabilities": blue.tolist(),
+                "blue_top1": int(blue.argmax()) + 1, "red_top100": top_red_combinations(red.tolist()),
+                "ranking_score": "sum_of_marginal_log_odds_not_joint_probability",
+                "model_type": anchor["model_type"], "feature_version": anchor["mathematical"]["feature_version"]}
     model = RedBlueNet(Recipe(window=spec["window"], hidden=spec["hidden"]))
     model.load_state_dict(anchor["model"])
     model.eval()

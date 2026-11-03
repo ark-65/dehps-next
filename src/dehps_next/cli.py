@@ -76,6 +76,9 @@ def main():
     continuous = commands.add_parser("program-continuous")
     continuous.add_argument("--name", required=True)
     continuous.add_argument("--reason", required=True)
+    multiscale = commands.add_parser("program-multiscale")
+    multiscale.add_argument("--name", required=True)
+    multiscale.add_argument("--reason", required=True)
     numeric = commands.add_parser("numeric-adopt")
     numeric.add_argument("--release", required=True)
     numeric.add_argument("--reason", required=True)
@@ -117,7 +120,7 @@ def main():
     try:
         if args.command == "init":
             db.migrate()
-            output({"schema": 15, "status": "initialized", "runtime": str(settings.runtime)})
+            output({"schema": 16, "status": "initialized", "runtime": str(settings.runtime)})
         elif args.command == "parent-pin":
             from .retained_parent import bootstrap
 
@@ -168,6 +171,10 @@ def main():
             from .steward import Steward
 
             output(Steward(db, artifacts).continuous(args.name, args.reason))
+        elif args.command == "program-multiscale":
+            from .steward import Steward
+
+            output(Steward(db, artifacts).multiscale(args.name, args.reason))
         elif args.command == "numeric-adopt":
             from .research_memory import adopt_numeric
 

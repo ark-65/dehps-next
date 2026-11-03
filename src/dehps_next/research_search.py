@@ -10,7 +10,12 @@ from .research_policy import train_policy
 
 
 def novel_specs(db, dataset, code, topic):
+    from .multiscale import METHODS, initial_specs
     from .research_memory import untried_specs
+
+    if set(topic.get("methods", [])) <= set(METHODS) and topic.get("methods"):
+        fresh = untried_specs(db, dataset, initial_specs())
+        return fresh or extended_specs(db, dataset, topic)
 
     # Progress from local structure to longer histories and stronger shrinkage.
     curricula = [
@@ -90,13 +95,18 @@ def extended_specs(db, dataset, topic, *, minimum=1):
 
             anchors = [ROOT_SPEC]
         methods = topic.get("methods", ["fft", "ridge", "newton"])
+        from .multiscale import METHODS, initial_specs, is_dynamic
+
+        dynamic = set(methods) <= set(METHODS)
+        if dynamic:
+            anchors = [s for s in anchors if is_dynamic(s)] or [initial_specs()[6]]
         neighbors = []
         for i in range(512):
             spec = dict(anchors[i % len(anchors)])
             spec["method"] = methods[(i // len(anchors)) % len(methods)]
-            parameter = ("window", "hidden", "epochs", "learning_rate", "weight_decay", "train_history")[
-                (i // 2) % 6
-            ]
+            axes = ("learning_rate", "weight_decay", "train_history") if dynamic else (
+                "window", "hidden", "epochs", "learning_rate", "weight_decay", "train_history")
+            parameter = axes[(i // 2) % len(axes)]
             direction = 1 if i % 2 else -1
             scale = 1 + (generation - 1) % 8
             value = spec[parameter]
@@ -139,6 +149,8 @@ def extended_specs(db, dataset, topic, *, minimum=1):
                         "train_history": 64 + int(u[6] * 961),
                     }
                 )
+                if dynamic:
+                    global_specs[-1].update(window=100, hidden=8, epochs=100)
             cursor += 512
             for spec in untried_specs(db, dataset, global_specs, connection=c):
                 identity = digest(spec)
