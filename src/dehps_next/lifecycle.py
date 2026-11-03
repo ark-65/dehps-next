@@ -86,6 +86,12 @@ class Lifecycle:
             for row in c.execute(f"SELECT payload FROM {table}"):
                 add(row["payload"], True)
         core_datasets = {r["dataset_id"] for r in c.execute("SELECT DISTINCT dataset_id FROM cycles")}
+        for row in c.execute("SELECT contract FROM probability_rules"):
+            add(row["contract"], True)
+        for row in c.execute("SELECT payload FROM probability_forecasts"):
+            add(row["payload"], True)
+        for row in c.execute("SELECT protocol FROM research_review_studies WHERE protocol->>'kind'='MULTISCALE_GRID_V1'"):
+            add(row["protocol"], True)
         campaigns = c.execute("SELECT * FROM research_campaigns ORDER BY created_at DESC").fetchall()
         keep_campaigns = {
             r["id"]

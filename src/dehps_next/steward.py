@@ -141,6 +141,34 @@ class Steward:
             )
         return {"program": name, "interval": 0, "round_cap": None, "capacity_budget_unchanged": True}
 
+    def multiscale(self, name, reason):
+        from .multiscale import TOPIC, initial_specs
+        from .release import numeric_identity
+
+        if len(reason) < 24:
+            raise DomainError("PROGRAM_POLICY_REASON", "Record the owner-directed research change")
+        with self.db.pool.connection() as c, c.transaction():
+            c.execute("SELECT pg_advisory_xact_lock(740141)")
+            p = c.execute("SELECT * FROM research_programs WHERE id=%s FOR UPDATE", (name,)).fetchone()
+            if not p or p["config"]["code_digest"] != code_identity():
+                raise DomainError("PROGRAM_RELEASE_CHANGED", "Adopt the reviewed release first")
+            if c.execute("""SELECT 1 FROM jobs j JOIN research_nodes n ON n.id=j.research_node_id
+                JOIN research_campaigns r ON r.id=n.campaign_id
+                WHERE r.program_id=%s AND j.state IN ('READY','RUNNING')""", (name,)).fetchone():
+                raise DomainError("ACTIVE_PROGRAM", "Finish the current frozen campaign first")
+            parent = c.execute("""SELECT v.snapshot FROM retained_parent_heads h
+                JOIN retained_parent_versions v ON v.id=h.version_id WHERE h.program_id=%s""", (name,)).fetchone()
+            if not parent or parent["snapshot"]["config"].get("numeric_digest") != numeric_identity():
+                raise DomainError("MULTISCALE_PARENT_REQUIRED", "Re-evaluate and pin the accepted parent under the new numeric contract")
+            config = {**p["config"], "topics": [TOPIC], "interval": 0, "max_daily": 0}
+            c.execute("INSERT INTO resource_policy_changes(policy,reason) VALUES(%s,%s)",
+                      (Jsonb({"operation": "MULTISCALE_MAIN_DIRECTION", "program": name,
+                              "old_config": p["config"], "new_config": config,
+                              "initial_recipes": initial_specs(), "promotion_unchanged": True}), reason))
+            c.execute("UPDATE research_programs SET config=%s,champion_spec=%s,current_campaign=NULL,next_due=now() WHERE id=%s",
+                      (Jsonb(config), Jsonb(parent["snapshot"]["spec"]), name))
+        return {"program": name, "topic": TOPIC, "initial_recipes": 36, "counters_preserved": True}
+
     def tick(self):
         output = []
         with self.db.pool.connection() as c, c.transaction():
@@ -273,4 +301,7 @@ class Steward:
             preview = {"reason": "LIVE_SWEEP_INCLUDES_CANDIDATE_COUNTS"}
         else:
             preview = sweep = {"reason": "GC_NOT_DUE", "interval_seconds": 30}
-        return {"gc_preview": preview, "gc": sweep, "programs": self.tick(), "soak_samples": observed}
+        from .probability_journal import maintain
+
+        return {"gc_preview": preview, "gc": sweep, "programs": self.tick(), "soak_samples": observed,
+                "probability_research": maintain(self.db, self.artifacts)}

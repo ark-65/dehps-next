@@ -2,6 +2,7 @@
 
 from datetime import UTC
 
+from psycopg import Error as DatabaseError
 from psycopg.types.json import Jsonb
 
 from .calendar import CALENDAR, ZONE, next_target
@@ -62,6 +63,7 @@ class Reports:
                 f"已结算前向蓝球：{summary['hits']}/{summary['n']}；红5及以上：{summary['red5_hits']}/{summary['n']}（含覆盖缺口 {summary['missing']} 期）。历史开发指标的缓步提高不代表已建立前向能力。",
                 "训练日程：开奖日17:00暂停，收尾完成即封存发信，不等待19:00；本期完整官方结果核验后恢复。",
                 "数据使用 Next 独立数据库；初始历史来自授权导入，后续开奖直接同步福彩官方。",
+                *self.probability_lines(),
             ],
         }
 
@@ -95,6 +97,17 @@ class Reports:
             ]
         return []
 
+    def probability_lines(self):
+        rows = self.db.rows("""SELECT spec,payload->'probability_diagnostics' AS audit
+            FROM research_memory_events WHERE kind='EVALUATION' AND jsonb_typeof(payload->'probability_diagnostics')='object'
+            ORDER BY seq DESC LIMIT 1""")
+        if not rows:
+            return []
+        r = rows[0]
+        means = r["audit"]["windows"]["recent"]["means"]
+        return [f"概率研究方法：{r['spec']['method']}；近100期红球Brier {means['model_red_brier']:.6f}、蓝球对数损失 {means['model_blue_log_loss']:.6f}。校准与频率状态诊断已登记，独立于命中率晋升门槛。",
+                "多窗口波动假设尚待验证；冻结规则的前30期仅作描述性观察，不代表稳定优势或50%达标。"]
+
     def forward_summary(self):
         return self.db.rows("""SELECT count(*) AS n,coalesce(sum((e.metrics->>'blue_top1_hit')::int),0) AS hits,
             count(*) FILTER(WHERE s.state='MISSED') AS missing,
@@ -123,6 +136,13 @@ class Reports:
         target = None
         try:
             target = self.prepare(prepare_now)
+            from .probability_journal import tick
+
+            try:
+                state["probability_research"] = tick(self.db, self.artifacts, target, self.clock())
+            except (DomainError, DatabaseError, OSError) as exc:
+                state["probability_research"] = {"state": "SHADOW_UNAVAILABLE",
+                    "reason": getattr(exc, "code", type(exc).__name__), "formal_report_continues": True}
             clock = self.clock().astimezone(ZONE)
             state["phase"] = (
                 "FINAL_PREPARATION"
@@ -195,6 +215,7 @@ class Reports:
                                 "17:00停止训练并收尾复核，完成即封存、发送，不等待19:00；19:30仅为故障兜底截止。本期官方开奖号核验后自动恢复训练。",
                                 "提前验收预测已保留为验收记录，不算本期正式报告；业务覆盖缺口如实计入。50%目标未建立。",
                                 *reference["lines"],
+                                *self.probability_lines(),
                                 self.validation_line(
                                     reference["reference"]["validation"]["windows"],
                                     reference["reference"]["validation"].get("business"),

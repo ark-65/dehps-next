@@ -31,7 +31,7 @@ def module(name, filename):
 
 mechanism = module("followup_mechanism", "benchmark-selection.py")
 effect = module("followup_effect", "benchmark-selection-effect.py")
-ORDER = [(model, think) for model in ("qwen3:1.7b", "qwen3:4b", "qwen3:8b") for think in (False, True)]
+ORDER = [("qwen3:4b", think) for think in (False, True)]
 
 
 def source_profiles(db, corpus):

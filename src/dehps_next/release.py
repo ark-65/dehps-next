@@ -29,6 +29,7 @@ def numeric_identity():
         "research_math.py",
         "research_protocol.py",
         "scores.py",
+        "multiscale.py",
     ]
     # Exact orchestration source audited against the unchanged v2 fitter, scores, anchors and RNG.
     # Unknown future edits get a new numeric identity; no blanket compatibility mapping.

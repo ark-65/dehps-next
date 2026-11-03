@@ -447,7 +447,7 @@ def main():
     assert d.rows("SELECT current_database() AS n")[0]["n"] == "dehps_next_parent_acceptance"
     header = prepare(d, a)
     inventory = {m["name"]: m["digest"] for m in request_json("/api/tags")["models"]}
-    for model in ("qwen3:1.7b", "qwen3:4b", "qwen3:8b"):
+    for model in ("qwen3:4b",):
         if model not in inventory:
             raise SystemExit(f"Install the next official local model before continuing: {model}")
         for thinking in (False, True):

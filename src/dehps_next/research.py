@@ -121,6 +121,16 @@ class Research:
             else:
                 dataset = DataService(self.db, self.artifacts).research_snapshot(c)
                 protocol = make_protocol(dataset["sample_count"], recent, historical)
+            from .multiscale import TOPIC, initial_specs
+
+            if topic and topic.get("name") == TOPIC["name"]:
+                header = {"kind": "MULTISCALE_GRID_V1", "dataset_id": dataset["id"],
+                          "dataset": dataset["artifact"], "protocol": protocol,
+                          "numeric": numeric_identity(), "initial_recipes": initial_specs(),
+                          "scope": "FROZEN_DEVELOPMENT_GRID;NOT_FORWARD"}
+                study_id = "multiscale-grid-" + digest(header)[:32]
+                c.execute("INSERT INTO research_review_studies(id,protocol,sha256) VALUES(%s,%s,%s) ON CONFLICT DO NOTHING",
+                          (study_id, Jsonb(header), digest(header)))
             c.execute(
                 """INSERT INTO research_campaigns(id,config,dataset_id,protocol)
                 VALUES(%s,%s,%s,%s)""",
@@ -397,6 +407,11 @@ class Research:
         if hit_mode:
             evaluation["recent50"] = summary(scores, node["protocol"]["recent50"])
             evaluation["business"] = public(business)
+            from .probability_diagnostics import diagnose, svg
+
+            audit = diagnose(scores, snapshot, node["protocol"], parent_scores)
+            evaluation["probability_diagnostics"] = audit
+            evaluation["calibration_figure"] = self.artifacts.write(svg(audit), category="research/diagnostics")
             execution["score_reuse_scope"] = (
                 "exact100_origins_same_data_seed_math_threads;hit_metrics_recomputed"
                 if cached

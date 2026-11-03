@@ -35,6 +35,7 @@ def get_status(db, artifacts):
             "full_branch_comparison_and_protected_holdout": "RESEARCH_CAMPAIGNS_SEPARATE;PROTECTED_HOLDOUT_PENDING",
         }
     from .local_usage import summary
+    from .probability_journal import research_status
     from .research_memory import memory_status
     from .research_selection import selection_status
     from .training_window import status as training_window
@@ -47,6 +48,7 @@ def get_status(db, artifacts):
         "training_window": window,
         "research_memory": memory_status(db),
         "qwen_selection": selection_status(db),
+        "probability_research": research_status(db),
         "candidate_review": {
             "minimum_options_per_choice": 3
             if db.settings.research_agent in ("candidates-v3", "candidates-v4")

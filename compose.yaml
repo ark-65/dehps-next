@@ -22,7 +22,7 @@ x-app: &app
     OMP_NUM_THREADS: "1"
     MKL_NUM_THREADS: "1"
     DEHPS_NEXT_RESEARCH_URL: http://next-inference:11434
-    DEHPS_NEXT_RESEARCH_MODEL: qwen3:1.7b
+    DEHPS_NEXT_RESEARCH_MODEL: qwen3:4b
   volumes:
     - ./runtime/application:/app/runtime/application
     - ./runtime/host:/app/runtime/host:ro
