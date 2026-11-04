@@ -1,13 +1,14 @@
 """Compare evidence before selecting; distinguish validated Qwen from learned-value fallback."""
 
 import random
+from datetime import timedelta
 
 from psycopg.types.json import Jsonb
 
-from .domain import digest
+from .domain import digest, now
 from .errors import DomainError
 from .research_agent import infer
-from .research_memory import recall
+from .research_memory import feedback_contract, recall
 from .research_policy import train_policy
 from .research_review import candidate_pool, changes, counts, cross_round_feedback
 from .research_selection_evidence import SEMANTIC_FAILURES, mechanism_progress, observe_positions
@@ -15,6 +16,9 @@ from .research_selection_evidence import SEMANTIC_FAILURES, mechanism_progress, 
 
 def selection_status(db):
     state = db.rows("SELECT * FROM qwen_selection_state WHERE id=1")
+    active = db.rows("SELECT config FROM qwen_selection_profiles WHERE id=%s", (state[0]["profile_id"],)) if state else []
+    cadence = active[0]["config"].get("cadence") if active else None
+    last = state[0].get("last_scheduled_at") if state else None
     rows = db.rows("SELECT source,payload FROM qwen_selection_audits ORDER BY id DESC LIMIT 100")
     positions = [p for r in rows if r["source"] == "QWEN_COMPARATIVE" for p in r["payload"]["positions"]][
         :100
@@ -23,6 +27,12 @@ def selection_status(db):
         WHERE payload->>'kind'='SELECTION_EFFECT_24_V4' ORDER BY created_at DESC LIMIT 3""")
     return {
         "state": state[0] if state else None,
+        "advice_cadence": {
+            "policy": cadence,
+            "next_time_not_before": last + timedelta(seconds=cadence["min_interval_seconds"])
+            if cadence and last else None,
+            "training_between_reviews": "CONTINUES_WITH_FEEDBACK_VALUE_SELECTION",
+        },
         "sources": db.rows("SELECT source,count(*) AS n FROM qwen_selection_audits GROUP BY source"),
         "recent_qwen_slots": len(positions),
         "active_inference": db.rows("""SELECT id,campaign_id,model,created_at,
@@ -308,6 +318,10 @@ def mechanism_metrics(db, study, profile):
         seed = int(r["arm"].split(":")[-1])
         actual_profile = {**profile, "options": {**profile["options"], "seed": seed}}
         m = receipt["metrics"]
+        if profile.get("selector_contract") == "comparative-v4.5-short":
+            from .research_short_thinking import validate_receipt
+
+            validate_receipt(m, actual_profile)
         gpu = m.get("offload") or {}
         if (
             receipt["model_digest"] != profile["model_digest"]
@@ -358,7 +372,7 @@ def activate(db, profile, study):
     actual = mechanism_metrics(db, study, profile)
     if (
         r.get("profile_id") != identity
-        or profile.get("selector_contract") != "comparative-v4.4"
+        or profile.get("selector_contract") not in ("comparative-v4.4", "comparative-v4.5-short")
         or not r.get("passed")
         or r.get("executed_feedback") != 72
         or r.get("executed_no_feedback") != 72
@@ -370,6 +384,18 @@ def activate(db, profile, study):
         or r["accuracy_feedback_lift"] < 0.2
     ):
         raise DomainError("MECHANISM_NOT_VALIDATED", "Do not activate a failed or different model profile")
+    if profile.get("selector_contract") == "comparative-v4.5-short":
+        from .research_short_thinking import performance, validate_profile
+
+        validate_profile(profile)
+        measured = performance(db, study, profile)
+        qualified = db.rows("SELECT payload FROM research_review_results WHERE study_id=%s",
+                            (study + "-short-qualification",))
+        if (
+            not measured["passed"] or not qualified or not qualified[0]["payload"].get("passed")
+            or qualified[0]["payload"].get("measurement") != measured
+        ):
+            raise DomainError("SHORT_PROFILE_NOT_QUALIFIED", "Require the independently recomputed latency gate")
     with db.pool.connection() as c, c.transaction():
         c.execute("SELECT pg_advisory_xact_lock(740134)")
         if c.execute("""SELECT 1 FROM jobs j JOIN research_nodes n ON n.id=j.research_node_id
@@ -383,10 +409,39 @@ def activate(db, profile, study):
             (identity, Jsonb(profile), study),
         )
         c.execute(
-            "UPDATE qwen_selection_state SET profile_id=%s,reason=NULL,retry_after=NULL,updated_at=now() WHERE id=1",
-            (identity,),
+            """UPDATE qwen_selection_state SET profile_id=%s,reason=NULL,retry_after=NULL,
+            last_scheduled_at=CASE WHEN profile_id=%s THEN last_scheduled_at ELSE NULL END,
+            last_scheduled_feedback_seq=CASE WHEN profile_id=%s THEN last_scheduled_feedback_seq ELSE 0 END,
+            updated_at=now() WHERE id=1""",
+            (identity, identity, identity),
         )
     return identity
+
+
+def short_admission(db, job, identity, campaign, memory):
+    """Serialize infrequent advice; value-guided training keeps running between reviews."""
+    from .research_short_thinking import CADENCE
+
+    with db.pool.connection() as c, c.transaction():
+        db.fence(c, job)
+        state = c.execute("SELECT * FROM qwen_selection_state WHERE id=1 FOR UPDATE").fetchone()
+        if state["profile_id"] != identity:
+            return "PROFILE_CHANGED"
+        if state["last_scheduled_at"] and (
+            now() - state["last_scheduled_at"]
+        ).total_seconds() < CADENCE["min_interval_seconds"]:
+            return "LOW_FREQUENCY_INTERVAL"
+        fresh = (
+            c.execute("""SELECT count(*) AS n FROM research_memory_events
+                WHERE contract=%s AND kind='EVALUATION' AND parent_id IS NOT NULL AND seq>%s""",
+                (feedback_contract(campaign), state["last_scheduled_feedback_seq"])).fetchone()["n"]
+            if state["last_scheduled_at"] else memory["trials"]
+        )
+        if fresh < CADENCE["min_new_feedback"]:
+            return "LOW_FREQUENCY_WAITING_FEEDBACK"
+        c.execute("""UPDATE qwen_selection_state SET last_scheduled_at=now(),
+            last_scheduled_feedback_seq=%s WHERE id=1""", (memory["through_seq"],))
+    return None
 
 
 def propose_batch_v4(controller, campaign, nodes, count, job, pulse):
@@ -405,6 +460,8 @@ def propose_batch_v4(controller, campaign, nodes, count, job, pulse):
     )[0]
     reason = state["reason"] if state["reason"] and not state["retry_due"] else None
     reason = reason or ("MECHANISM_NOT_VALIDATED" if not profiles else None)
+    if not reason and profiles[0]["config"].get("selector_contract") == "comparative-v4.5-short":
+        reason = short_admission(db, job, identity, campaign, memory)
     receipts = []
     proof = None
     picks = []
@@ -520,6 +577,8 @@ def propose_batch_v4(controller, campaign, nodes, count, job, pulse):
             "attempted_qwen_schema": attempted_schema,
             "failed_qwen_call": failed_call,
         }
+    proof["through_seq"] = memory["through_seq"]
+    proof["feedback_contract"] = feedback_contract(campaign)
     source = (
         ("FEEDBACK_VALUE_FALLBACK" if trained else "COLD_START_EXPLORATION") if reason else "QWEN_COMPARATIVE"
     )

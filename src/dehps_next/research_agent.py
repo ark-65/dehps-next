@@ -188,7 +188,14 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse, *, profil
         pulse()
 
     try:
-        if payload["stream"]:
+        if profile and profile.get("transport") == "qwen-two-stage-budget-v1":
+            from .research_short_thinking import generate
+
+            response = generate(
+                db, artifacts, campaign, job, call, payload, request_ref,
+                stream_progress, stream_pulse, profile,
+            )
+        elif payload["stream"]:
             from .research_stream import chat
 
             response = chat(payload, stream_progress, stream_pulse, job)
@@ -206,12 +213,14 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse, *, profil
             )
         }
         metrics["wall_seconds"] = round(time.monotonic() - started, 4)
+        metrics.update(response.get("short_metadata", {}))
         metrics["prompt_utf8_token_upper_bound"] = prompt_upper
         metrics["context_capacity"] = payload["options"]["num_ctx"]
         if profile:
             metrics["selection_profile"] = profile
             metrics["raw_completion"] = response.get("message", {}).get("content", "")
-            metrics["raw_thinking"] = response.get("message", {}).get("thinking", "")
+            if not response.get("short_metadata"):
+                metrics["raw_thinking"] = response.get("message", {}).get("thinking", "")
         # Token receipts describe real local generation even if the worker lease, JSON or candidate validation fails.
         with db.pool.connection() as c, c.transaction():
             c.execute("UPDATE research_model_calls SET metrics=%s WHERE id=%s", (Jsonb(metrics), call))
@@ -236,7 +245,7 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse, *, profil
                 )
             if (
                 profile
-                and payload["stream"]
+                and (payload["stream"] or response.get("short_metadata"))
                 and loaded.get("context_length") != payload["options"]["num_ctx"]
             ):
                 raise DomainError(

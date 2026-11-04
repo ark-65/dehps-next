@@ -10,11 +10,11 @@ from .domain import canonical
 from .errors import DomainError
 
 
-def chat(payload, progress, pulse, job, *, silence_seconds=180):
+def chat(payload, progress, pulse, job, *, silence_seconds=180, path="/api/chat", raw=False):
     from .research_agent import endpoint
 
     request = urllib.request.Request(
-        endpoint() + "/api/chat",
+        endpoint() + path,
         data=canonical(payload).encode(),
         headers={"Content-Type": "application/json"},
     )
@@ -52,8 +52,9 @@ def chat(payload, progress, pulse, job, *, silence_seconds=180):
                     raise DomainError(
                         "LOCAL_INFERENCE_UNAVAILABLE", "Local streaming provider reported an error"
                     )
-                message = frame.get("message", {})
-                delta, thought = message.get("content", ""), message.get("thinking", "")
+                message = frame if raw else frame.get("message", {})
+                delta = message.get("response" if raw else "content", "")
+                thought = message.get("thinking", "")
                 if not isinstance(delta, str) or not isinstance(thought, str):
                     raise DomainError("INVALID_LOCAL_REPLY", "Streaming message fields must be text")
                 content.append(delta)

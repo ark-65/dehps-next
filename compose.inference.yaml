@@ -26,7 +26,7 @@ services:
     networks:
       next: {aliases: [next-inference]}
     ports: ["127.0.0.1:11435:11434"]
-    mem_limit: 16g
+    mem_limit: 8g
     cpus: 4
     pids_limit: 256
     cap_drop: [ALL]

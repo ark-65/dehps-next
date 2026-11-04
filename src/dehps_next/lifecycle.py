@@ -99,6 +99,12 @@ class Lifecycle:
             if r["status"] not in TERMINAL and not r["status"].startswith("BLOCKED_")
         }
         keep_campaigns.update(r["id"] for r in campaigns[:2])
+        # Bound causal-proof retention while other training continues between reviews.
+        keep_campaigns.update(r["campaign_id"] for r in c.execute("""
+            SELECT n.campaign_id FROM research_nodes n JOIN qwen_selection_state s ON s.id=1
+            WHERE n.hypothesis->>'source'='QWEN_COMPARATIVE'
+              AND n.hypothesis->'review_evidence'->>'profile_id'=s.profile_id
+              AND n.completed_at IS NOT NULL ORDER BY n.completed_at DESC LIMIT 4"""))
         # Even a blocked task may still be resumed: all READY/RUNNING inputs remain roots.
         keep_campaigns.update(
             r["campaign_id"]
