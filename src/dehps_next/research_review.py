@@ -63,8 +63,17 @@ def cross_round_feedback(db, campaign, selected):
         " ORDER BY (payload->'business'->'windows'->'recent'->>'blue_hits')::int DESC,seq DESC LIMIT 1",
         args,
     )
+    # Preserve an outcome of Qwen's own earlier selection across infrequent reviews.
+    profile = campaign["config"].get("selection_profile_id")
+    qwen_feedback = db.rows(
+        "SELECT seq,node_id,spec,payload-'period_outcomes'-'origin_provenance' AS p"
+        + base
+        + " AND payload->'review_evidence'->>'selection_source'='QWEN_COMPARATIVE'"
+        " AND payload->'review_evidence'->>'profile_id'=%s ORDER BY seq DESC LIMIT 1",
+        (*args, profile),
+    ) if profile else []
     seen, evidence = set(), []
-    for row in candidates + tradeoffs:
+    for row in qwen_feedback + candidates + tradeoffs:
         if row["node_id"] in seen:
             continue
         seen.add(row["node_id"])

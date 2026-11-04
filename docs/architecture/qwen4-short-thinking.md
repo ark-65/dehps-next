@@ -45,6 +45,11 @@ training. A model/profile switch resets the cadence cursor. Keep the actual
 inference, selected recipe training and feedback in a later real request as
 separate required closed-loop evidence.
 
+Prioritize the latest comparable Qwen-selected training outcome in the bounded
+feedback sample, so newer value-guided trials cannot displace all causal feedback.
+GC keeps at most four latest completed Qwen-selected nodes' owning campaigns for
+the active profile, preserving their checkpoints/scores across the advice gap.
+
 Production and isolated comparison fitters share `dehpsnext-training.slice`,
 CPU0-19 with an aggregate800% CPU quota. Each retains its frozen eight origin
 processes/one Torch thread; sharing admission does not change numerical threads
