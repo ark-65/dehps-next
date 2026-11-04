@@ -163,7 +163,8 @@ class Lifecycle:
             from .research_memory import archive_campaign
 
             compact_contracts.add(archive_campaign(c, identity))
-            topic = campaign["topic"] if campaign["program_id"] else "manual"
+            # Program-associated manual revalidations can also have no topic.
+            topic = (campaign["topic"] or "manual") if campaign["program_id"] else "manual"
             c.execute(
                 """INSERT INTO research_rollups(topic,campaigns,nodes,decisions) VALUES(%s,1,%s,%s)
                 ON CONFLICT(topic) DO UPDATE SET campaigns=research_rollups.campaigns+1,
