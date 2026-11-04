@@ -59,3 +59,30 @@ services remain under the parent slice; host system/user/init stay on20-21.
 
 Real isolated engineering validation is recorded separately from mechanism
 qualification. No unit tests/CI, dashboard, test mail or legacy access are added.
+
+## Owner-authorized scheduling amendment
+
+The initial300-second request-start spacing was a conservative duty-cycle
+setting, not a model dependency. Owner2026-11-04 authorizes acceleration without
+changing the frozen reasoning experiment. A separate immutable scheduling epoch
+references the original contract hash and a complete manifest of every choice
+already performed, including wrong answers. Do not relabel them as new calls or
+rerun a performed answer. The original contract/drivers remain preserved.
+
+New requests remain serial. When GNOME idle time is at least120 seconds and a
+fresh host snapshot shows at least6GiB available memory, memory full PSI<=0.5%,
+primary worker/planner/steward running, two fresh worker heartbeats, and a
+completed primary node within300 seconds, wait30 seconds after the preceding
+actual logical call completes. If the desktop is active/unknown or monitoring
+is missing/stale, retain the original300-second start interval. Known memory or
+training faults hold new requests and recheck every10 seconds. Returning user
+activity cannot cancel an in-flight answer; the next admission returns to the
+original interval. These are resource guards, not a promise of zero shared-GPU
+or power impact. Numerical threads, helper CPUs and concurrency are unchanged.
+
+The host observer uses read-only GNOME/proc/Next observations and writes only its
+owned operation snapshot. Scheduling amendments and mixed-epoch call provenance
+are included in transferred qualification evidence. All144 mechanism outcomes,
+semantic gates, measured latency gates, fixed24-pool comparison, completed-boundary
+activation and actual later-feedback proof remain required. Production advice
+still requires1800 seconds and20 new comparable outcomes.
