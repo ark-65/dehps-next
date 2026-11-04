@@ -28,6 +28,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--corpus', required=True)
     parser.add_argument('--receipt', required=True)
+    parser.add_argument('--schedule-amendment', type=Path)
     args = parser.parse_args()
     if not 1 <= len(args.corpus) <= 50:
         raise SystemExit('Use a bounded new corpus identity')
@@ -58,11 +59,39 @@ def main():
         'physical_recovery': 'SAME_INPUT_SEED;RECEIPTS_RETAINED;NEVER_RETRY_A_PERFORMED_WRONG_ANSWER',
         'primary_activation': False,
     }
+    admission, amendment = None, None
     with d.pool.connection() as c, c.transaction():
-        c.execute('INSERT INTO research_review_studies(id,protocol,sha256) VALUES(%s,%s,%s) ON CONFLICT DO NOTHING',
-                  (args.corpus+'-contract', Jsonb(freeze), digest(freeze)))
-        assert c.execute('SELECT sha256 FROM research_review_studies WHERE id=%s',
-                         (args.corpus+'-contract',)).fetchone()['sha256'] == digest(freeze)
+        if args.schedule_amendment:
+            spec = importlib.util.spec_from_file_location('admission', Path(__file__).with_name('qwen-acceptance-admission.py'))
+            admission = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(admission)
+            amendment = json.loads(args.schedule_amendment.read_text())
+            original = c.execute('SELECT protocol,sha256 FROM research_review_studies WHERE id=%s',
+                                 (args.corpus+'-contract',)).fetchone()
+            assert original and digest(original['protocol']) == original['sha256']
+            assert amendment['kind'] == 'QWEN_ACCEPTANCE_SCHEDULING_AMENDMENT_V1'
+            assert amendment['id'] == args.corpus+'-schedule-v2'
+            assert amendment['original_contract_sha256'] == original['sha256']
+            assert amendment['policy'] == admission.POLICY
+            assert amendment['drivers'] == {**freeze['drivers'], 'qwen-acceptance-admission.py':
+                hashlib.sha256(Path(admission.__file__).read_bytes()).hexdigest()}
+            assert {k: v for k, v in freeze.items() if k != 'drivers'} == {
+                k: v for k, v in original['protocol'].items() if k != 'drivers'}
+            assert freeze['drivers']['benchmark-selection.py'] == original['protocol']['drivers']['benchmark-selection.py']
+            for record in amendment['preserved_choices']:
+                old = c.execute('SELECT payload FROM research_review_selections WHERE study_id=%s AND pair=%s AND arm=%s',
+                                (record['study'], record['pair'], record['arm'])).fetchone()
+                assert old and digest(old['payload']) == record['payload_sha256']
+            c.execute('INSERT INTO research_review_studies(id,protocol,sha256) VALUES(%s,%s,%s) ON CONFLICT DO NOTHING',
+                      (amendment['id'], Jsonb(amendment), digest(amendment)))
+            assert c.execute('SELECT sha256 FROM research_review_studies WHERE id=%s',
+                             (amendment['id'],)).fetchone()['sha256'] == digest(amendment)
+            freeze = {'base_contract': original['protocol'], 'scheduling_amendment': amendment}
+        else:
+            c.execute('INSERT INTO research_review_studies(id,protocol,sha256) VALUES(%s,%s,%s) ON CONFLICT DO NOTHING',
+                      (args.corpus+'-contract', Jsonb(freeze), digest(freeze)))
+            assert c.execute('SELECT sha256 FROM research_review_studies WHERE id=%s',
+                             (args.corpus+'-contract',)).fetchone()['sha256'] == digest(freeze)
         node = c.execute('SELECT id FROM research_nodes WHERE campaign_id=%s', (m.CONTEXT,)).fetchone()
         assert not c.execute("SELECT 1 FROM jobs WHERE kind='RESEARCH_PLAN' AND state='RUNNING' AND lease_until>now()").fetchone()
         c.execute("UPDATE jobs SET state='SNAPSHOT_EXCLUDED' WHERE kind='RESEARCH_PLAN' AND state='READY' AND research_node_id!=%s", (node['id'],))
@@ -73,13 +102,16 @@ def main():
             row['basis']['offered'], row['basis']['memory'], count=kw.get('count', 1),
             feedback=arm=='feedback', **row['basis']['variants'][variant])
         while True:
-            last = db.rows("""SELECT created_at FROM research_model_calls WHERE campaign_id=%s
-                AND stage LIKE 'CANDIDATE_SELECTION_V4_%%' ORDER BY id DESC LIMIT 1""", (campaign['id'],))
-            if last:
-                delay = REQUEST_INTERVAL_SECONDS-(now()-last[0]['created_at']).total_seconds()
-                if delay > 0:
-                    time.sleep(min(delay, 30))
-                    continue
+            if admission:
+                admission.wait(db, '/operation/admission.json', '/operation/admission-events.jsonl')
+            else:
+                last = db.rows("""SELECT created_at FROM research_model_calls WHERE campaign_id=%s
+                    AND stage LIKE 'CANDIDATE_SELECTION_V4_%%' ORDER BY id DESC LIMIT 1""", (campaign['id'],))
+                if last:
+                    delay = REQUEST_INTERVAL_SECONDS-(now()-last[0]['created_at']).total_seconds()
+                    if delay > 0:
+                        time.sleep(min(delay, 30))
+                        continue
             result = original(db, artifacts, campaign, frozen, row, p, arm, variant, seed, **kw)
             actual = db.rows("""SELECT * FROM research_model_calls WHERE campaign_id=%s
                 AND stage=%s ORDER BY id DESC LIMIT 1""",
@@ -114,6 +146,8 @@ def main():
                         'logical_input_digest': digest(context), 'actual_prefix_verified': verified}
             if result['valid'] or result.get('error') in SEMANTIC_FAILURES:
                 assert result.get('actual_call'), 'Performed answer requires its exact source-local provider receipt'
+                if amendment:
+                    result['scheduling_epoch'] = amendment['id']
                 return result
             print(json.dumps({'physical_void': result, 'logical_choice_recorded': False}), flush=True)
             time.sleep(15)
@@ -126,6 +160,8 @@ def main():
         qualification = {'kind': 'SHORT_QWEN4_QUALIFICATION_V1', 'passed': passed,
                          'mechanism_study': result['study'], 'measurement': measured,
                          'mechanism_passed': result['passed'], 'profile_id': digest(config)}
+        if amendment:
+            qualification['scheduling_amendment'] = amendment['id']
         study = result['study']+'-short-qualification'
         with d.pool.connection() as c, c.transaction():
             c.execute('INSERT INTO research_review_studies(id,protocol,sha256) VALUES(%s,%s,%s) ON CONFLICT DO NOTHING',
