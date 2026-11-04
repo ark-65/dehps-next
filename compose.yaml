@@ -67,6 +67,7 @@ services:
       options: {max-size: "5m", max-file: "3"}
   worker:
     <<: *app
+    cgroup_parent: dehpsnext-training.slice
     command: [worker, --role, compute]
     cpus: 8
     mem_limit: 6g

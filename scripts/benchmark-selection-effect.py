@@ -376,10 +376,9 @@ def main():
     parser.add_argument("--mechanism-study")
     args = parser.parse_args()
     s = Settings.from_env()
-    if (
-        conninfo_to_dict(s.database_url).get("dbname") != "dehps_next_parent_acceptance"
-        or s.runtime.name != "parent-case"
-    ):
+    allowed = {("dehps_next_parent_acceptance", "parent-case"),
+               ("dehps_next_qwen4_short_acceptance", "short-case")}
+    if (conninfo_to_dict(s.database_url).get("dbname"), s.runtime.name) not in allowed:
         raise SystemExit("Refusing anything except the named isolated Next acceptance clone/runtime")
     if not args.study or len(args.study) > 50:
         raise SystemExit("Study ID must contain1..50 characters")

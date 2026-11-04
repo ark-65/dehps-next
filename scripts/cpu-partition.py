@@ -44,6 +44,12 @@ if args.mode == "prepare":
         raise SystemExit("Unexpected existing Next slice; review before replacement.")
     target.write_bytes(source.read_bytes())
     target.chmod(0o644)
+    training_source = ROOT / "deploy/systemd/dehpsnext-training.slice"
+    training_target = Path("/etc/systemd/system/dehpsnext-training.slice")
+    if training_target.exists() and training_target.read_bytes() != training_source.read_bytes():
+        raise SystemExit("Unexpected existing Next training slice; review before replacement.")
+    training_target.write_bytes(training_source.read_bytes())
+    training_target.chmod(0o644)
     boot_source = ROOT / "deploy/systemd" / BOOT_UNIT
     boot_target = Path("/etc/systemd/system") / BOOT_UNIT
     if boot_target.exists() and boot_target.read_bytes() != boot_source.read_bytes():
@@ -52,12 +58,14 @@ if args.mode == "prepare":
     boot_target.chmod(0o644)
     subprocess.run(["systemctl", "daemon-reload"], check=True)
     subprocess.run(["systemctl", "enable", "--now", "dehpsnext.slice"], check=True)
+    subprocess.run(["systemctl", "enable", "--now", "dehpsnext-training.slice"], check=True)
 if args.mode in ("apply", "check"):
     containers = []
     for name in NAMES:
         row = json.loads(call("docker", "inspect", name))[0]
         assert row["State"]["Running"], name
-        assert row["HostConfig"]["CgroupParent"] == "dehpsnext.slice", name
+        expected = "dehpsnext-training.slice" if name.endswith("-worker-1") else "dehpsnext.slice"
+        assert row["HostConfig"]["CgroupParent"] == expected, name
         assert row["HostConfig"]["CpusetCpus"] == "0-19", name
         affinity = sorted(os.sched_getaffinity(row["State"]["Pid"]))
         assert affinity and set(affinity) <= set(range(20)), (name, affinity)
@@ -81,6 +89,8 @@ if args.mode in ("apply", "check"):
     for unit in UNITS:
         assert properties(unit)["EffectiveCPUs"] == "20-21", (unit, properties(unit))
     assert properties("dehpsnext.slice")["EffectiveCPUs"] == "0-19"
+    assert properties("dehpsnext-training.slice")["EffectiveCPUs"] == "0-19"
+    assert call("systemctl", "show", "dehpsnext-training.slice", "-p", "CPUQuotaPerSecUSec", "--value") == "8s"
     assert call("systemctl", "is-enabled", BOOT_UNIT) == "enabled"
     assert call("systemctl", "is-active", BOOT_UNIT) == "active"
     result = {

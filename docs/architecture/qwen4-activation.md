@@ -1,5 +1,8 @@
 # Qwen4B activation and causal execution evidence
 
+The owner paused this long-thinking workflow on2026-11-04. Its evidence remains
+preserved; new activation work follows [the separate short-thinking contract](qwen4-short-thinking.md).
+
 Owner authorization2026-11-04 permits activation after acceptance, superseding
 the previous instruction to retain4B without automatic activation. The existing
 mechanism and fixed comparison contracts, promotion/qualification gates and
