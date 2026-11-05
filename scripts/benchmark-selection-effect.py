@@ -377,7 +377,8 @@ def main():
     args = parser.parse_args()
     s = Settings.from_env()
     allowed = {("dehps_next_parent_acceptance", "parent-case"),
-               ("dehps_next_qwen4_short_acceptance", "short-case")}
+               ("dehps_next_qwen4_short_acceptance", "short-case"),
+               ("dehps_next_qwen4_grounded_acceptance", "grounded-case")}
     if (conninfo_to_dict(s.database_url).get("dbname"), s.runtime.name) not in allowed:
         raise SystemExit("Refusing anything except the named isolated Next acceptance clone/runtime")
     if not args.study or len(args.study) > 50:

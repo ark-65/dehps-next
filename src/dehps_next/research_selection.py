@@ -12,6 +12,7 @@ from .research_memory import feedback_contract, recall
 from .research_policy import train_policy
 from .research_review import candidate_pool, changes, counts, cross_round_feedback
 from .research_selection_evidence import SEMANTIC_FAILURES, mechanism_progress, observe_positions
+from .research_short_thinking import CONTRACT, CONTRACTS
 
 
 def selection_status(db):
@@ -60,7 +61,8 @@ def selection_status(db):
 
 
 def make_context(
-    parent, business, offered, memory, *, count=2, feedback=True, layout_seed=1729, id_seed=1729
+    parent, business, offered, memory, *, count=2, feedback=True, layout_seed=1729, id_seed=1729,
+    selector_contract="comparative-v4.4",
 ):
     candidates = {"r" + digest([id_seed, spec])[:7]: spec for spec in offered[:6]}
     if len(candidates) != min(len(offered), 6):
@@ -155,6 +157,33 @@ def make_context(
             },
         },
     }
+    if selector_contract == CONTRACT:
+        context["task"] = (
+            "Assess each candidate under its exact ID key, then rank each group and select its best ID. "
+            "Every candidate needs exactly one assessment. IDs and display positions have no meaning. "
+            "Copy that candidate row's known_utility exactly, including null. Never copy another row's utility. "
+            "If its observed_evidence_keys is nonempty, cite at least one of THOSE exact keys. "
+            "A similar method with different parameters is an analogy, not the same observed recipe. "
+            "For untried recipes keep utility null; compare risks using supplied evidence without inventing outcomes. "
+            "When completed trials have known utilities, larger values are better, including negative numbers. "
+            "Compare every candidate before ranking; select the first candidate in your ranking. "
+            "Use only supplied evidence key strings; explain the comparison in at most twelve words."
+        )
+        context["assessment_format"] = "OBJECT_KEYED_BY_EXACT_CANDIDATE_ID"
+        properties = schema["properties"]
+        item = properties["assessments"]["items"]
+        record = {
+            **item, "required": [k for k in item["required"] if k != "candidate"],
+            "properties": {k: v for k, v in item["properties"].items() if k != "candidate"},
+        }
+        ordered = [key for group in groups.values() for key in group]
+        properties["assessments"] = {
+            "type": "object", "additionalProperties": False,
+            "required": ordered, "properties": {key: record for key in ordered},
+        }
+        for group, ids in groups.items():
+            properties["rankings"]["properties"][group]["items"] = {"type": "string", "enum": ids}
+            properties["selection"]["properties"][group] = {"type": "string", "enum": ids}
     return context, schema, candidates, groups, evidence
 
 
@@ -184,6 +213,7 @@ def select(
         feedback=feedback,
         layout_seed=layout_seed,
         id_seed=id_seed,
+        selector_contract=profile["selector_contract"],
     )
     reply, receipt = infer(
         db,
@@ -200,7 +230,12 @@ def select(
     try:
         if list(reply) != ["assessments", "rankings", "selection"]:
             raise ValueError("Candidate assessment must precede ranking and selection")
-        assessments = {r["candidate"]: r for r in reply["assessments"]}
+        if profile["selector_contract"] == CONTRACT:
+            if not isinstance(reply["assessments"], dict):
+                raise ValueError("Require an assessment object keyed by every exact candidate ID")
+            assessments = reply["assessments"]
+        else:
+            assessments = {r["candidate"]: r for r in reply["assessments"]}
         if len(reply["assessments"]) != len(candidates) or set(assessments) != set(candidates):
             raise ValueError("Assess every distinct candidate exactly once")
         supplied = {e["key"]: e for e in evidence}
@@ -318,7 +353,7 @@ def mechanism_metrics(db, study, profile):
         seed = int(r["arm"].split(":")[-1])
         actual_profile = {**profile, "options": {**profile["options"], "seed": seed}}
         m = receipt["metrics"]
-        if profile.get("selector_contract") == "comparative-v4.5-short":
+        if profile.get("selector_contract") in CONTRACTS:
             from .research_short_thinking import validate_receipt
 
             validate_receipt(m, actual_profile)
@@ -372,7 +407,7 @@ def activate(db, profile, study):
     actual = mechanism_metrics(db, study, profile)
     if (
         r.get("profile_id") != identity
-        or profile.get("selector_contract") not in ("comparative-v4.4", "comparative-v4.5-short")
+        or profile.get("selector_contract") not in ("comparative-v4.4", *CONTRACTS)
         or not r.get("passed")
         or r.get("executed_feedback") != 72
         or r.get("executed_no_feedback") != 72
@@ -384,7 +419,7 @@ def activate(db, profile, study):
         or r["accuracy_feedback_lift"] < 0.2
     ):
         raise DomainError("MECHANISM_NOT_VALIDATED", "Do not activate a failed or different model profile")
-    if profile.get("selector_contract") == "comparative-v4.5-short":
+    if profile.get("selector_contract") in CONTRACTS:
         from .research_short_thinking import performance, validate_profile
 
         validate_profile(profile)
@@ -460,7 +495,7 @@ def propose_batch_v4(controller, campaign, nodes, count, job, pulse):
     )[0]
     reason = state["reason"] if state["reason"] and not state["retry_due"] else None
     reason = reason or ("MECHANISM_NOT_VALIDATED" if not profiles else None)
-    if not reason and profiles[0]["config"].get("selector_contract") == "comparative-v4.5-short":
+    if not reason and profiles[0]["config"].get("selector_contract") in CONTRACTS:
         reason = short_admission(db, job, identity, campaign, memory)
     receipts = []
     proof = None
@@ -479,6 +514,7 @@ def propose_batch_v4(controller, campaign, nodes, count, job, pulse):
                 count=count,
                 layout_seed=layout,
                 id_seed=layout ^ 0x85EBCA6B,
+                selector_contract=profiles[0]["config"]["selector_contract"],
             )
             picks, receipt, proof = select(
                 db,
