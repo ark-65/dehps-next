@@ -9,7 +9,9 @@ from psycopg.types.json import Jsonb
 from .domain import canonical
 from .errors import DomainError
 
-CONTRACT = "comparative-v4.5-short"
+CONTRACT = "comparative-v4.6-grounded-short"
+CONTRACTS = ("comparative-v4.5-short", CONTRACT)
+ASSESSMENT_CONTRACT = "candidate-keyed-copy-observations-v1"
 TRANSPORT = "qwen-two-stage-budget-v1"
 THINKING_TOKENS = 512
 ANSWER_TOKENS = 1024
@@ -21,6 +23,7 @@ PERFORMANCE_GATE = {"mean_seconds_max": 240, "p95_seconds_max": 300}
 def profile(model_digest):
     return {
         "selector_contract": CONTRACT, "transport": TRANSPORT, "ground_output_schema": True,
+        "assessment_contract": ASSESSMENT_CONTRACT,
         "model": "qwen3:4b", "model_digest": model_digest, "think": True,
         "thinking_budget_tokens": THINKING_TOKENS, "cadence": CADENCE,
         "raw_prompt_template": "qwen3-chatml-v1",
@@ -36,7 +39,9 @@ def profile(model_digest):
 
 def validate_profile(profile):
     if (
-        profile.get("selector_contract") != CONTRACT
+        profile.get("selector_contract") not in CONTRACTS
+        or (profile.get("selector_contract") == CONTRACT
+            and profile.get("assessment_contract") != ASSESSMENT_CONTRACT)
         or profile.get("transport") != TRANSPORT
         or profile.get("model") != "qwen3:4b"
         or profile.get("think") is not True

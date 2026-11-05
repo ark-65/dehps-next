@@ -29,6 +29,7 @@ def main():
     parser.add_argument('--corpus', required=True)
     parser.add_argument('--receipt', required=True)
     parser.add_argument('--schedule-amendment', type=Path)
+    parser.add_argument('--idle-admission', action='store_true')
     args = parser.parse_args()
     if not 1 <= len(args.corpus) <= 50:
         raise SystemExit('Use a bounded new corpus identity')
@@ -37,8 +38,8 @@ def main():
     spec.loader.exec_module(m)
     s = Settings.from_env()
     if (
-        conninfo_to_dict(s.database_url).get('dbname') != 'dehps_next_qwen4_short_acceptance'
-        or s.runtime.name != 'short-case'
+        conninfo_to_dict(s.database_url).get('dbname') != 'dehps_next_qwen4_grounded_acceptance'
+        or s.runtime.name != 'grounded-case'
     ):
         raise SystemExit('Only the named isolated Next acceptance database/runtime is allowed')
     d = Database(s)
@@ -48,6 +49,9 @@ def main():
     inventory = request_json('/api/tags')['models']
     config = profile(next(r['digest'] for r in inventory if r['name'] == 'qwen3:4b'))
     header = m.prepare(d, a)
+    prior_failure = d.rows('SELECT payload FROM research_review_results WHERE study_id=%s',
+                           ('qwen-mechanism-ed39e4838f547bff',))[0]['payload']
+    assert prior_failure['passed'] is False
     freeze = {
         'kind': 'SHORT_QWEN4_ACCEPTANCE_V1', 'corpus': args.corpus, 'profile': config,
         'profile_id': digest(config), 'controller_source': code_identity(), 'numeric': numeric_identity(),
@@ -58,8 +62,19 @@ def main():
                     for p in (Path(__file__), Path(m.__file__))},
         'physical_recovery': 'SAME_INPUT_SEED;RECEIPTS_RETAINED;NEVER_RETRY_A_PERFORMED_WRONG_ANSWER',
         'primary_activation': False,
+        'supersedes_failed_study': 'qwen-mechanism-ed39e4838f547bff',
+        'prior_failure_sha256': digest(prior_failure),
+        'development_scope': 'KNOWN_CASE_REGRESSION_AFTER_FAILURE_DIAGNOSIS;FRESH_CALLS;FIXED24_POOL_COMPARISON_SEPARATE',
     }
     admission, amendment = None, None
+    if args.idle_admission:
+        assert not args.schedule_amendment
+        spec = importlib.util.spec_from_file_location('admission', Path(__file__).with_name('qwen-acceptance-admission.py'))
+        admission = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(admission)
+        freeze['request_interval_seconds'] = None
+        freeze['admission_policy'] = admission.POLICY
+        freeze['drivers']['qwen-acceptance-admission.py'] = hashlib.sha256(Path(admission.__file__).read_bytes()).hexdigest()
     with d.pool.connection() as c, c.transaction():
         if args.schedule_amendment:
             spec = importlib.util.spec_from_file_location('admission', Path(__file__).with_name('qwen-acceptance-admission.py'))
@@ -100,7 +115,7 @@ def main():
     def fresh_review(db, artifacts, campaign, frozen, row, p, arm, variant, seed, **kw):
         expected, _, _, _, _ = make_context(frozen['parent_spec'], frozen['parent_business'],
             row['basis']['offered'], row['basis']['memory'], count=kw.get('count', 1),
-            feedback=arm=='feedback', **row['basis']['variants'][variant])
+            feedback=arm=='feedback', selector_contract=p['selector_contract'], **row['basis']['variants'][variant])
         while True:
             if admission:
                 admission.wait(db, '/operation/admission.json', '/operation/admission-events.jsonl')
@@ -146,6 +161,8 @@ def main():
                         'logical_input_digest': digest(context), 'actual_prefix_verified': verified}
             if result['valid'] or result.get('error') in SEMANTIC_FAILURES:
                 assert result.get('actual_call'), 'Performed answer requires its exact source-local provider receipt'
+                if args.idle_admission:
+                    result['scheduling_epoch'] = args.corpus+'-contract'
                 if amendment:
                     result['scheduling_epoch'] = amendment['id']
                 return result

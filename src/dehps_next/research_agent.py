@@ -264,7 +264,18 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse, *, profil
             raise DomainError(
                 "LOCAL_MODEL_TRUNCATED", "Local structured response hit its per-response technical limit"
             )
-        parsed = json.loads(content)
+        def distinct_object(pairs):
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError("Duplicate JSON object key in grounded comparison")
+                result[key] = value
+            return result
+
+        if profile and profile.get("selector_contract") == "comparative-v4.6-grounded-short":
+            parsed = json.loads(content, object_pairs_hook=distinct_object)
+        else:
+            parsed = json.loads(content)
         with db.pool.connection() as c, c.transaction():
             db.fence(c, job)
             c.execute("UPDATE research_model_calls SET state='SUCCEEDED' WHERE id=%s", (call,))
