@@ -26,3 +26,11 @@ statistics and original activation/real-feedback gates remain separate stages.
 Keep primary training active. Where Docker's cached CPU count rejects NanoCPUs8,
 use the equivalent CPUQuota800000/CPUPeriod100000 with CPU0-19 and the shared
 800000/100000 training-parent quota; do not increase actual CPU allocation.
+
+PostgreSQL returns `SUM(bigint)` as numeric/Decimal. At collection only, adapt the
+two FIT_PROGRESS sums (`origins`, `steps`) to exact nonnegative JSON integers,
+rejecting fractional/nonfinite values. Keep the frozen comparison driver and
+statistical arithmetic unchanged. Recovery collects the already completed48
+choices and144 evaluations; it executes no additional inference or fitting.
+Preserve the failed collector and its manifest, and freeze a separate continuation
+operation before resuming gated activation and actual feedback-chain verification.

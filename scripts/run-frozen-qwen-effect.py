@@ -4,7 +4,34 @@ import argparse
 import importlib.util
 import json
 import time
+from decimal import Decimal
 from pathlib import Path
+
+
+class IntegralProgressCounts:
+    """Expose PostgreSQL numeric SUM(bigint) counters as exact JSON integers."""
+
+    def __init__(self, database):
+        self.database = database
+
+    def __getattr__(self, name):
+        return getattr(self.database, name)
+
+    def rows(self, query, params=()):
+        rows = self.database.rows(query, params)
+        if "FIT_PROGRESS" in query and len(rows) == 1 and set(rows[0]) == {"origins", "steps"}:
+            row = dict(rows[0])
+            for key, value in row.items():
+                if isinstance(value, Decimal):
+                    if not value.is_finite() or value != value.to_integral_value():
+                        raise ValueError("Training progress counters must be finite integers")
+                    row[key] = int(value)
+                elif type(value) is not int:
+                    raise TypeError("Unexpected training progress counter type")
+                if row[key] < 0:
+                    raise ValueError("Training progress counters must be nonnegative")
+            return [row]
+        return rows
 
 
 def load(name, path):
@@ -67,6 +94,8 @@ def main():
                 connection.execute("""UPDATE jobs SET state='SNAPSHOT_EXCLUDED'
                     WHERE kind='RESEARCH_PLAN' AND state IN ('READY','RUNNING')""")
             effect.prepare(db, artifacts, study, frozen["mechanism"])
+        elif args.phase == "collect":
+            effect.collect(IntegralProgressCounts(db), artifacts, study)
         else:
             getattr(effect, args.phase)(db, artifacts, study)
         if args.phase == "collect":
