@@ -15,7 +15,9 @@ def inspect_next(name, *, attempts=6, delay_seconds=5):
     last_error = ""
     for attempt in range(attempts):
         try:
-            result = subprocess.run(["docker", "inspect", name], text=True, capture_output=True, timeout=15)
+            result = subprocess.run(
+                ["docker", "inspect", name], check=False, text=True, capture_output=True, timeout=15,
+            )
             if result.returncode == 0:
                 rows = json.loads(result.stdout)
                 if (
