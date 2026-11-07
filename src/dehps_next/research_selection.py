@@ -503,6 +503,7 @@ def propose_batch_v4(controller, campaign, nodes, count, job, pulse):
     attempted_context = None
     attempted_schema = None
     failed_call = None
+    deliveries = []
     if not reason:
         try:
             layout = int(digest([parent["id"], offered])[:8], 16)
@@ -541,6 +542,9 @@ def propose_batch_v4(controller, campaign, nodes, count, job, pulse):
                 raise DomainError(
                     "QWEN_POSITION_BIAS", "At least90 of100 real choices followed the first position"
                 )
+            from .research_feedback_delivery import delivery_records
+
+            deliveries = delivery_records(db, memory, proof, receipt, a)
         except DomainError as exc:
             if exc.code.startswith("YIELD_") or exc.code in ("LEASE_LOST", "INTERRUPTED"):
                 raise
@@ -633,15 +637,19 @@ def propose_batch_v4(controller, campaign, nodes, count, job, pulse):
     }
     with db.pool.connection() as c, c.transaction():
         db.fence(c, job)
-        c.execute(
-            "INSERT INTO qwen_selection_audits(campaign_id,call_id,source,payload) VALUES(%s,%s,%s,%s)",
+        audit = c.execute(
+            "INSERT INTO qwen_selection_audits(campaign_id,call_id,source,payload) VALUES(%s,%s,%s,%s) RETURNING id",
             (
                 campaign["id"],
                 receipts[0]["call_id"] if receipts else failed_call["id"] if failed_call else None,
                 source,
                 Jsonb(proof),
             ),
-        )
+        ).fetchone()["id"]
+        if source == "QWEN_COMPARATIVE":
+            from .research_feedback_delivery import record_deliveries
+
+            record_deliveries(c, campaign, deliveries, audit)
     for pick in picks:
         pick.update(
             source=source,
