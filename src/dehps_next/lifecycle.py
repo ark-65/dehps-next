@@ -99,6 +99,14 @@ class Lifecycle:
             if r["status"] not in TERMINAL and not r["status"].startswith("BLOCKED_")
         }
         keep_campaigns.update(r["id"] for r in campaigns[:2])
+        for row in c.execute("""SELECT s.protocol,r.payload AS result FROM research_review_studies s
+            LEFT JOIN research_review_results r ON r.study_id=s.id
+            WHERE s.protocol->>'kind'='QWEN_FEEDBACK_CLOSURE_V1'"""):
+            add(row["protocol"], True)
+            keep_campaigns.update(row["protocol"]["target_campaigns"])
+            if row["result"]:
+                add(row["result"], True)
+                keep_campaigns.update(row["result"]["proof_campaigns"])
         # Bound causal-proof retention while other training continues between reviews.
         keep_campaigns.update(r["campaign_id"] for r in c.execute("""
             SELECT n.campaign_id FROM research_nodes n JOIN qwen_selection_state s ON s.id=1

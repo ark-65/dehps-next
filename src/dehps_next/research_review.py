@@ -63,15 +63,11 @@ def cross_round_feedback(db, campaign, selected):
         " ORDER BY (payload->'business'->'windows'->'recent'->>'blue_hits')::int DESC,seq DESC LIMIT 1",
         args,
     )
-    # Preserve an outcome of Qwen's own earlier selection across infrequent reviews.
+    # Keep the oldest undelivered batch together, even when its recipes share a family.
+    from .research_feedback_delivery import batch_feedback
+
     profile = campaign["config"].get("selection_profile_id")
-    qwen_feedback = db.rows(
-        "SELECT seq,node_id,spec,payload-'period_outcomes'-'origin_provenance' AS p"
-        + base
-        + " AND payload->'review_evidence'->>'selection_source'='QWEN_COMPARATIVE'"
-        " AND payload->'review_evidence'->>'profile_id'=%s ORDER BY seq DESC LIMIT 1",
-        (*args, profile),
-    ) if profile else []
+    qwen_feedback = batch_feedback(db, base, args, profile)
     seen, evidence = set(), []
     for row in qwen_feedback + candidates + tradeoffs:
         if row["node_id"] in seen:
@@ -98,6 +94,13 @@ def cross_round_feedback(db, campaign, selected):
         "evidence": evidence,
         "trials": sum(r["n"] for r in families),
         "through_seq": max((r["last_seq"] for r in families), default=0),
+        "qwen_feedback_targets": [
+            {"node": row["node_id"], "seq": row["seq"], "contract": args[0],
+             "recipe_digest": digest(row["spec"]), "hits": counts(row["p"]["business"]),
+             "verdict": row["p"]["verdict"],
+             "selection_input_digest": row["p"]["review_evidence"]["input_digest"]}
+            for row in qwen_feedback
+        ],
         "scope": "COMPARABLE_RECIPE_TRIALS;SAME100_ISSUES_NOT_ADDITIONAL_DRAWS",
     }
 
