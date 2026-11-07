@@ -6,6 +6,7 @@ import time
 import urllib.error
 import urllib.request
 
+from psycopg.errors import LockNotAvailable
 from psycopg.types.json import Jsonb
 
 from .domain import canonical
@@ -176,6 +177,7 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse, *, profil
             "selection_profile": profile,
             "wall_seconds": round(time.monotonic() - started, 4),
             "context_capacity": payload["options"]["num_ctx"],
+            "stream_lock_retries": job.get("local_stream_lock_retries", 0),
         }
         # Partial provider output is durable evidence, not a completed token receipt.
         with db.pool.connection() as c:
@@ -184,8 +186,17 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse, *, profil
     def stream_pulse():
         from .resources import Resources
 
-        Resources(db).renew_local_stream(job)
-        pulse()
+        while True:
+            pulse()
+            try:
+                Resources(db).renew_local_stream(job)
+            except LockNotAvailable:
+                # The transaction rolled back: retry only its lease check, while
+                # keeping this same provider stream and every execution guard.
+                job["local_stream_lock_retries"] = job.get("local_stream_lock_retries", 0) + 1
+                continue
+            pulse()
+            return
 
     try:
         if profile and profile.get("transport") == "qwen-two-stage-budget-v1":
@@ -213,6 +224,7 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse, *, profil
             )
         }
         metrics["wall_seconds"] = round(time.monotonic() - started, 4)
+        metrics["stream_lock_retries"] = job.get("local_stream_lock_retries", 0)
         metrics.update(response.get("short_metadata", {}))
         metrics["prompt_utf8_token_upper_bound"] = prompt_upper
         metrics["context_capacity"] = payload["options"]["num_ctx"]

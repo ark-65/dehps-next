@@ -34,3 +34,12 @@ statistical arithmetic unchanged. Recovery collects the already completed48
 choices and144 evaluations; it executes no additional inference or fitting.
 Preserve the failed collector and its manifest, and freeze a separate continuation
 operation before resuming gated activation and actual feedback-chain verification.
+
+Primary streaming also shares advisory lock740139 with lifecycle collection.
+Collection can hold it longer than the three-second database lock timeout. Retry
+only a rolled-back stream-renewal transaction after that lock timeout, inside the
+same provider generation. Check the worker pulse before every attempt and after
+success; keep token/state/expiry fencing, stream silence, draw pause, physical
+pressure and reservation safeguards. Record the contention retry count separately
+from native token receipts. Never retry a completed model answer or alter the
+frozen model, input, sampling, thinking budget or production advice cadence.
