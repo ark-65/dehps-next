@@ -29,3 +29,10 @@ an acceptance assertion corrected to compare against the existing parent head.
 Deployment and post-release runtime verification are recorded separately after
 the current frozen primary campaign finishes. No unit tests, CI, dashboard or
 test mail are added, and no legacy code/data/service is accessed.
+
+After initial deployment, an actual sweep with retirement held the fence2.8739
+seconds. An additional refinement moves historical node-reference registration
+outside the fence, while freshly resolving every protected root inside it. The
+primary-scale dry collection then held the fence0.4217 seconds (3.961 seconds
+whole operation including inventory). Metadata discovery is separate from the
+still-serialized deletion and graph-retirement decisions.

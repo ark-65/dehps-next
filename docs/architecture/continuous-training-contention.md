@@ -6,6 +6,11 @@ reachability to delete newly published evidence. Inventory disk usage and pendin
 file names before taking the fence. Extract arbitrary-depth node artifact
 references with PostgreSQL JSONPath, validate uncatalogued paths, and register only
 missing references in a batch. Actual filesystem operations still validate paths.
+Historical node-reference discovery only inserts missing catalog metadata and
+runs outside the publication fence. Inside the fence, re-read all protected roots
+and their exact node references; candidate deletion still uses that fresh fenced
+reachability. This keeps the historical scan out of worker admission/checkpoints
+without using a stale protection snapshot.
 Archive at most four old graphs per sweep; archive paired facts and exact recipe
 identities in the retirement transaction, then compact immutable memory in a
 separate transaction after releasing the claim and writer locks. Record actual
