@@ -151,7 +151,11 @@ class Resources:
                 JOIN research_nodes n2 ON n2.campaign_id=r.id WHERE n.id=%s GROUP BY r.config""",
                 (job["research_node_id"],),
             ).fetchone()["closing"]
-        lane = "planning" if job["kind"] == "RESEARCH_PLAN" else "compute"
+        continuation = research and c.execute(
+            "SELECT r.config ? 'inference_continuation' AS enabled FROM research_nodes n JOIN research_campaigns r ON r.id=n.campaign_id WHERE n.id=%s",
+            (job["research_node_id"],),
+        ).fetchone()["enabled"]
+        lane = "planning" if job["kind"] == "RESEARCH_PLAN" and not continuation else "compute"
         wall, cpu, write = (
             (420, 1 + self.db.settings.inference_threads, 4 * 1024**2)
             if lane == "planning"

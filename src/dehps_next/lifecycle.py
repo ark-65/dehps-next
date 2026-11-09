@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import os
+import time
 from datetime import timedelta
 
 from psycopg.types.json import Jsonb
@@ -13,6 +14,7 @@ from .resources import TERMINAL
 
 GRACE_SECONDS = 60
 DETAIL_DAYS = 7
+REFERENCE_PATH = '$.** ? (@.type() == "object" && exists(@.path) && exists(@.sha256) && exists(@.bytes))'
 
 
 def refs(value):
@@ -47,9 +49,9 @@ class Lifecycle:
             else:
                 file.unlink()
 
-    def reachability(self, c, pressure=False):
+    def reachability(self, c, pressure=False, pending_files=None):
         protected, registered = set(), {}
-        for file in self.artifacts.root.rglob(".pending-*"):
+        for file in pending_files if pending_files is not None else self.artifacts.root.rglob(".pending-*"):
             self.artifacts.path(str(file.relative_to(self.artifacts.root)))
             if file.is_file() and now().timestamp() - file.stat().st_mtime > 86400:
                 data = file.read_bytes()
@@ -67,7 +69,6 @@ class Lifecycle:
 
         def add(value, protect):
             for ref in refs(value):
-                self.artifacts.path(ref["path"])
                 registered[ref["path"]] = ref
                 if protect:
                     protected.add(ref["path"])
@@ -125,8 +126,13 @@ class Lifecycle:
         research_datasets = {r["dataset_id"] for r in campaigns if r["id"] in keep_artifacts}
         for row in c.execute("SELECT id,artifact FROM datasets"):
             add(row["artifact"], row["id"] in core_datasets | research_datasets)
-        for row in c.execute("SELECT campaign_id,anchor,evaluation,hypothesis FROM research_nodes"):
-            add(row, row["campaign_id"] in keep_artifacts)
+        # Extract references in PostgreSQL rather than walking every historical
+        # score/provenance scalar in Python under the global fence. The recursive
+        # query preserves references at arbitrary depths, including native calls.
+        for row in c.execute("""SELECT campaign_id,jsonb_path_query_array(
+            jsonb_build_array(anchor,evaluation,hypothesis),%s::jsonpath) AS refs FROM research_nodes""",
+            (REFERENCE_PATH,)):
+            add(row["refs"], row["campaign_id"] in keep_artifacts)
         for row in c.execute("SELECT checkpoint FROM jobs WHERE checkpoint IS NOT NULL"):
             add(row["checkpoint"], True)
         newest_policies = {
@@ -138,10 +144,20 @@ class Lifecycle:
             add(row, row["campaign_id"] in keep_artifacts)
         for row in c.execute("SELECT artifact FROM research_score_cache"):
             add(row["artifact"], True)
-        for ref in registered.values():
-            c.execute(
+        # Most references were registered by their writer. Avoid a round trip
+        # per historical reference while holding the publication/claim fence.
+        known = {r['path'] for r in c.execute(
+            "SELECT path FROM artifact_catalog WHERE path=ANY(%s)", (list(registered),)
+        )}
+        missing = [ref for path, ref in registered.items() if path not in known]
+        # Existing catalog paths were already validated by their writer. Missing
+        # paths still require validation; every actual file operation rechecks.
+        for ref in missing:
+            self.artifacts.path(ref["path"])
+        with c.cursor() as cursor:
+            cursor.executemany(
                 "INSERT INTO artifact_catalog(path,ref,category,writer_until) VALUES(%s,%s,%s,now()) ON CONFLICT DO NOTHING",
-                (ref["path"], Jsonb(ref), ref["path"].rsplit("/", 1)[0]),
+                [(ref["path"], Jsonb(ref), ref["path"].rsplit("/", 1)[0]) for ref in missing],
             )
         return protected, keep_campaigns
 
@@ -152,7 +168,7 @@ class Lifecycle:
             """SELECT * FROM research_campaigns WHERE id!=ALL(%s)
             AND status=ANY(%s) AND (updated_at<now()-interval '90 days' OR
             id IN (SELECT id FROM research_campaigns ORDER BY created_at DESC OFFSET 256))
-            ORDER BY created_at LIMIT 16""",
+            ORDER BY created_at LIMIT 4""",
             (list(keep), list(TERMINAL) + ["BLOCKED_DUPLICATE_RESEARCH_DIRECTION"]),
         ).fetchall()
         compact_contracts = set()
@@ -202,10 +218,8 @@ class Lifecycle:
             )
             c.execute("DELETE FROM research_nodes WHERE campaign_id=%s", (identity,))
             c.execute("DELETE FROM research_campaigns WHERE id=%s", (identity,))
-        from .research_memory import compact
-
-        for contract in compact_contracts:
-            compact(c, contract, reason="BEFORE_GRAPH_RETIREMENT", force=True)
+        # archive_campaign has already preserved every paired fact and recipe
+        # transactionally. Summarization need not hold the global claim fence.
         # Exact recipe identities and paired memories survive every graph/context compaction.
         c.execute("DELETE FROM local_token_days WHERE day<current_date-32")
         # Preserve lifetime counts while retaining only a bounded recent accounting ledger.
@@ -230,7 +244,7 @@ class Lifecycle:
         c.execute(
             "DELETE FROM artifact_catalog WHERE state='DELETED' AND deleted_at<now()-interval '90 days'"
         )
-        return len(eligible)
+        return len(eligible), compact_contracts
 
     def collect(self, *, apply=False):
         counts = {
@@ -241,16 +255,19 @@ class Lifecycle:
             "deleted_bytes": 0,
             "at": now().isoformat(),
         }
+        pressure = self.artifacts.usage() >= self.db.settings.quota_bytes * 0.7
+        pending_files = list(self.artifacts.root.rglob(".pending-*"))
+        compact_contracts = set()
         with self.artifacts.locked(), self.db.pool.connection() as c, c.transaction():
             self.recover_quarantine()
             c.execute("SELECT pg_advisory_xact_lock(740139)")
+            fenced_at = time.monotonic()
             if apply:
                 c.execute(
                     "DELETE FROM research_score_cache WHERE created_at<now()-interval '7 days' OR id IN (SELECT id FROM research_score_cache ORDER BY created_at DESC OFFSET 64)"
                 )
-            pressure = self.artifacts.usage() >= self.db.settings.quota_bytes * 0.7
             counts["capacity_pressure"] = pressure
-            protected, keep = self.reachability(c, pressure=pressure)
+            protected, keep = self.reachability(c, pressure=pressure, pending_files=pending_files)
             counts["protected"] = len(protected)
             for row in c.execute(
                 "SELECT * FROM artifact_catalog WHERE state!='DELETED' AND path!=ALL(%s) ORDER BY created_at LIMIT 4096",
@@ -303,16 +320,24 @@ class Lifecycle:
                 counts["deleted"] += 1
                 counts["deleted_bytes"] += row["ref"]["bytes"]
             if apply:
-                counts["retired_campaigns"] = self.retire_details(c, keep)
+                counts["retired_campaigns"], compact_contracts = self.retire_details(c, keep)
                 c.execute(
                     "UPDATE resource_totals SET deleted_artifact_bytes=deleted_artifact_bytes+%s WHERE id=1",
                     (counts["deleted_bytes"],),
                 )
+                counts["fence_seconds"] = round(time.monotonic() - fenced_at, 4)
                 c.execute(
                     "INSERT INTO maintenance_state VALUES(1,%s) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload",
                     (Jsonb(counts),),
                 )
+            else:
+                counts["fence_seconds"] = round(time.monotonic() - fenced_at, 4)
         if apply:
             with self.artifacts.locked():
                 self.recover_quarantine()
+            from .research_memory import compact
+
+            for contract in compact_contracts:
+                with self.db.pool.connection() as c, c.transaction():
+                    compact(c, contract, reason="AFTER_DURABLE_GRAPH_ARCHIVE", force=True)
         return counts

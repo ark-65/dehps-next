@@ -101,7 +101,9 @@ class Database:
                 (SELECT token FROM jobs WHERE state='RUNNING' AND lease_until<now())""")
             c.execute("""UPDATE jobs SET state='READY',error_code='LEASE_EXPIRED', updated_at=now()
                 WHERE state='RUNNING' AND lease_until<now()""")
-            roles = {"all": "TRUE", "compute": "kind!='RESEARCH_PLAN'", "planning": "kind='RESEARCH_PLAN'"}
+            continuation = "EXISTS (SELECT 1 FROM research_nodes n JOIN research_campaigns r ON r.id=n.campaign_id WHERE n.id=jobs.research_node_id AND r.config ? 'inference_continuation')"
+            roles = {"all": "TRUE", "compute": "(kind!='RESEARCH_PLAN' OR " + continuation + ")",
+                     "planning": "(kind='RESEARCH_PLAN' AND NOT " + continuation + ")"}
             if role not in roles:
                 raise ValueError("Unknown worker role")
             from .training_window import TRAINING_KINDS
@@ -122,7 +124,8 @@ class Database:
                 "SELECT * FROM jobs WHERE state='READY' AND not_before<=now() AND "
                 + roles[role]
                 + allowed
-                + " ORDER BY CASE WHEN kind LIKE 'RESEARCH_%%' THEN 1 ELSE 0 END,created_at,id "
+                + " ORDER BY CASE WHEN kind LIKE 'RESEARCH_%%' THEN 1 ELSE 0 END,"
+                + "CASE WHEN " + continuation + " THEN 1 ELSE 0 END,created_at,id "
                 "FOR UPDATE SKIP LOCKED LIMIT 1",
                 params,
             ).fetchone()
