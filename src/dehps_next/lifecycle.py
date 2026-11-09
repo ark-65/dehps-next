@@ -33,6 +33,31 @@ class Lifecycle:
     def __init__(self, db, artifacts):
         self.db, self.artifacts = db, artifacts
 
+    def register_references(self, c, registered):
+        known = {r['path'] for r in c.execute(
+            "SELECT path FROM artifact_catalog WHERE path=ANY(%s)", (list(registered),)
+        )}
+        missing = [ref for path, ref in registered.items() if path not in known]
+        for ref in missing:
+            self.artifacts.path(ref["path"])
+        with c.cursor() as cursor:
+            cursor.executemany(
+                "INSERT INTO artifact_catalog(path,ref,category,writer_until) VALUES(%s,%s,%s,now()) ON CONFLICT DO NOTHING",
+                [(ref["path"], Jsonb(ref), ref["path"].rsplit("/", 1)[0]) for ref in missing],
+            )
+
+    def inventory_node_references(self):
+        # Historical discovery only adds missing catalog rows. It neither moves
+        # files nor decides reachability, so it needs no publication fence.
+        with self.db.pool.connection() as c, c.transaction():
+            registered = {}
+            for row in c.execute("""SELECT jsonb_path_query_array(
+                jsonb_build_array(anchor,evaluation,hypothesis),%s::jsonpath) AS refs FROM research_nodes""",
+                (REFERENCE_PATH,)):
+                for ref in row["refs"]:
+                    registered[ref["path"]] = ref
+            self.register_references(c, registered)
+
     def recover_quarantine(self):
         directory = self.artifacts.path(".gc-quarantine")
         if not directory.exists():
@@ -130,9 +155,9 @@ class Lifecycle:
         # score/provenance scalar in Python under the global fence. The recursive
         # query preserves references at arbitrary depths, including native calls.
         for row in c.execute("""SELECT campaign_id,jsonb_path_query_array(
-            jsonb_build_array(anchor,evaluation,hypothesis),%s::jsonpath) AS refs FROM research_nodes""",
-            (REFERENCE_PATH,)):
-            add(row["refs"], row["campaign_id"] in keep_artifacts)
+            jsonb_build_array(anchor,evaluation,hypothesis),%s::jsonpath) AS refs FROM research_nodes
+            WHERE campaign_id=ANY(%s)""", (REFERENCE_PATH, list(keep_artifacts))):
+            add(row["refs"], True)
         for row in c.execute("SELECT checkpoint FROM jobs WHERE checkpoint IS NOT NULL"):
             add(row["checkpoint"], True)
         newest_policies = {
@@ -146,19 +171,9 @@ class Lifecycle:
             add(row["artifact"], True)
         # Most references were registered by their writer. Avoid a round trip
         # per historical reference while holding the publication/claim fence.
-        known = {r['path'] for r in c.execute(
-            "SELECT path FROM artifact_catalog WHERE path=ANY(%s)", (list(registered),)
-        )}
-        missing = [ref for path, ref in registered.items() if path not in known]
         # Existing catalog paths were already validated by their writer. Missing
         # paths still require validation; every actual file operation rechecks.
-        for ref in missing:
-            self.artifacts.path(ref["path"])
-        with c.cursor() as cursor:
-            cursor.executemany(
-                "INSERT INTO artifact_catalog(path,ref,category,writer_until) VALUES(%s,%s,%s,now()) ON CONFLICT DO NOTHING",
-                [(ref["path"], Jsonb(ref), ref["path"].rsplit("/", 1)[0]) for ref in missing],
-            )
+        self.register_references(c, registered)
         return protected, keep_campaigns
 
     def retire_details(self, c, keep):
@@ -257,6 +272,7 @@ class Lifecycle:
         }
         pressure = self.artifacts.usage() >= self.db.settings.quota_bytes * 0.7
         pending_files = list(self.artifacts.root.rglob(".pending-*"))
+        self.inventory_node_references()
         compact_contracts = set()
         with self.artifacts.locked(), self.db.pool.connection() as c, c.transaction():
             self.recover_quarantine()
