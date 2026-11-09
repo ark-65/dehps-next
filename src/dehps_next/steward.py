@@ -302,6 +302,9 @@ class Steward:
         else:
             preview = sweep = {"reason": "GC_NOT_DUE", "interval_seconds": 30}
         from .probability_journal import maintain
+        from .research_continuation import fill_gap
 
-        return {"gc_preview": preview, "gc": sweep, "programs": self.tick(), "soak_samples": observed,
+        programs = self.tick()
+        continuation = fill_gap(self.db, self.artifacts)
+        return {"gc_preview": preview, "gc": sweep, "programs": programs, "continuation": continuation, "soak_samples": observed,
                 "probability_research": maintain(self.db, self.artifacts)}

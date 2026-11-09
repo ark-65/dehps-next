@@ -58,6 +58,7 @@ class Research:
         recovery_dataset=None,
         recovery_protocol=None,
         study_source=None,
+        continuation=None,
     ):
         if planner not in ("rules", "local") or not 2 <= max_nodes <= 8 or not name or len(name) > 80:
             raise DomainError("RESEARCH_POLICY", "Invalid campaign, planner or node budget")
@@ -94,6 +95,8 @@ class Research:
             config["recovery_source"] = recovery_source
         if study_source:
             config["study_source"] = study_source
+        if continuation:
+            config["inference_continuation"] = continuation
         with nullcontext(connection) if connection else self.db.pool.connection() as c, c.transaction():
             c.execute("SELECT pg_advisory_xact_lock(740134)")
             if self.db.settings.research_agent == "candidates-v4":
@@ -104,7 +107,12 @@ class Research:
                 if previous["config"] != config:
                     raise DomainError("CAMPAIGN_CONFLICT", "Existing research config is frozen")
                 return previous
-            if recovery_dataset and recovery_source and recovery_protocol:
+            if continuation:
+                dataset = c.execute("SELECT * FROM datasets WHERE id=%s", (continuation["dataset_id"],)).fetchone()
+                if not dataset:
+                    raise DomainError("CONTINUATION_DATA_MISSING", "Require the primary frozen dataset")
+                protocol = continuation["protocol"]
+            elif recovery_dataset and recovery_source and recovery_protocol:
                 dataset = c.execute("SELECT * FROM datasets WHERE id=%s", (recovery_dataset,)).fetchone()
                 if not dataset:
                     raise DomainError("RECOVERY_DATA_MISSING", "Original recovery snapshot is required")
@@ -497,6 +505,11 @@ class Research:
         self.artifacts.cleanup_checkpoints(job["id"])
 
     def plan(self, job, context, pulse):
+        continuation = context["config"].get("inference_continuation")
+        if continuation:
+            from .research_continuation import plan
+
+            return plan(self, job, context, pulse)
         if context["config"].get("recovery_source") or context["config"].get("study_source"):
             with self.db.pool.connection() as c, c.transaction():
                 self.db.fence(c, job)
