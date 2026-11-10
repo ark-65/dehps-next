@@ -29,3 +29,14 @@ Numerical fitting, original promotion/qualification, eight-CPU training, Qwen
 cadence, immutable predictions and mail remain unchanged. No new unit tests,
 CI, dashboard, test mail or legacy access is introduced. Deployment is performed
 only at the completed frozen campaign boundary.
+
+Production startup exposed an ordering error: backfilled older campaigns had
+newer journal sequence numbers. The follow-up orders comparable reviews by
+the source campaign creation time, recording that time in new immutable reviews
+so graph retirement cannot change their order. Existing records use their live
+source campaign time; records without either source are excluded from recent
+diagnosis rather than assigned an invented date.
+An isolated Python3.12 container queried the real Next database in a read-only
+transaction and checked all chosen source campaigns and diagnostic totals
+independently: campaigns5253/5252/5251/5250,28 candidates,20 red vetoes and27
+blue vetoes. Backfill insertion order no longer controls the next question.

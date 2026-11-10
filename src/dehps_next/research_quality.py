@@ -40,7 +40,9 @@ def review_completed(db):
                                "spec": n["spec"], "verdict": n["status"],
                                "windows": n["business"]["windows"], "paired_deltas": delta,
                                "execution": n["execution"]})
-        payload = {"version": 1, "campaign": campaign["id"], "dataset": campaign["dataset_id"],
+        payload = {"version": 1, "campaign": campaign["id"],
+                   "campaign_created_at": campaign["created_at"].isoformat(),
+                   "dataset": campaign["dataset_id"],
                    "protocol_digest": campaign["protocol"]["digest"],
                    "parent_spec": parents[0]["spec"], "parent_spec_digest": digest(parents[0]["spec"]),
                    "parent_windows": parents[0]["business"]["windows"], "candidates": candidates,
@@ -60,11 +62,13 @@ def review_completed(db):
 
 
 def recent_diagnosis(c, dataset, numeric, parent):
-    rows = c.execute("""SELECT seq,payload FROM research_memory_events
-        WHERE dataset_id=%s AND numeric_digest=%s AND kind='BATCH_QUALITY_REVIEW'
-          AND payload->>'version'='1'
-        ORDER BY seq DESC LIMIT 8""", (dataset, numeric)).fetchall()
-    rows = [r for r in rows if r["payload"]["parent_spec_digest"] == digest(parent)][:4]
+    rows = c.execute("""SELECT e.seq,e.payload FROM research_memory_events e
+        LEFT JOIN research_campaigns r ON r.id=e.payload->>'campaign'
+        WHERE e.dataset_id=%s AND e.numeric_digest=%s AND e.kind='BATCH_QUALITY_REVIEW'
+          AND e.payload->>'version'='1' AND e.payload->>'parent_spec_digest'=%s
+          AND (e.payload ? 'campaign_created_at' OR r.id IS NOT NULL)
+        ORDER BY coalesce((e.payload->>'campaign_created_at')::timestamptz,r.created_at) DESC,
+          e.seq DESC LIMIT 4""", (dataset, numeric, digest(parent))).fetchall()
     return {"review_events": [r["seq"] for r in rows],
             **{k: sum(r["payload"]["diagnosis"][k] for r in rows)
                for k in ("evaluated_candidates", "red_vetoes", "blue_vetoes", "no_recent_progress", "nested_only_vetoes")},
