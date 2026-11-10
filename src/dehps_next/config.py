@@ -82,8 +82,8 @@ class Settings:
             raise ValueError("Research queue must have depth1 or2")
         if result.research_agent == "legacy" and result.research_pipeline_depth != 1:
             raise ValueError("The legacy controller supports serial planning only")
-        if not 1 <= result.origin_processes <= 8:
-            raise ValueError("Expected1..8 isolated origin fitters")
+        if not 1 <= result.origin_processes <= 20:
+            raise ValueError("Expected1..20 isolated origin fitters")
         if result.origin_processes > 1 and result.training_threads not in (1, 2, 4, 8):
             raise ValueError("Parallel origin fitters require an audited thread count")
         if result.inference_backend not in ("cpu", "vulkan"):

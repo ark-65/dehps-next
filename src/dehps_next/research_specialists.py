@@ -61,6 +61,10 @@ def activate(db, study, reason):
 
 
 def study_context(db, campaign):
+    from .color_split import CALIBRATED_TOPIC
+    if (campaign["config"].get("topic") or {}).get("name") == CALIBRATED_TOPIC["name"]:
+        from .research_calibration import study_context as calibrated_context
+        return calibrated_context(db, campaign)
     if (campaign["config"].get("topic") or {}).get("name") != TOPIC["name"]:
         return None
     p = db.rows("SELECT config FROM research_programs WHERE id='autonomous-v2'")[0]

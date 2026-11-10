@@ -34,17 +34,24 @@ class Docker(http.client.HTTPConnection):
 
 
 def get(path, optional=False):
-    connection = Docker()
-    try:
-        connection.request("GET", path)
-        response = connection.getresponse()
-        if optional and response.status == 404:
-            return None
-        if response.status != 200:
-            raise RuntimeError(f"Docker telemetry returned {response.status}")
-        return json.loads(response.read())
-    finally:
-        connection.close()
+    # Retry only an infrastructure void, with the identical read-only request.
+    # Two bounded failures still invalidate telemetry and close admission.
+    for attempt in range(2):
+        connection = Docker()
+        try:
+            connection.request("GET", path)
+            response = connection.getresponse()
+            if optional and response.status == 404:
+                return None
+            if response.status != 200:
+                raise RuntimeError(f"Docker telemetry returned {response.status}")
+            return json.loads(response.read())
+        except (TimeoutError, ConnectionResetError, ConnectionAbortedError):
+            if attempt:
+                raise
+            logging.getLogger("dehps_next_host").warning("Retrying bounded Docker read: %s", path)
+        finally:
+            connection.close()
 
 
 def container_image_size(info):
@@ -135,6 +142,7 @@ def size(path, allow_links=False):
 
 
 def sample():
+    observed_at = datetime.now(UTC)
     if ROOT.name != "dehps-next" or not (ROOT / "AGENT.md").is_file():
         raise RuntimeError("Refusing telemetry outside the named Next repository")
     memory = {
@@ -158,7 +166,8 @@ def sample():
             "oom_killed": info["State"].get("OOMKilled", False),
             "writable_bytes": info.get("SizeRw", 0),
         }
-        images[info["Image"]] = container_image_size(info)
+        if info["Image"] not in images:
+            images[info["Image"]] = container_image_size(info)
     # Include registered build images, and the fixed dependency cache; never prune shared Docker state.
     for image in get("/images/json?filters=%7B%22label%22%3A%5B%22io.dehps-next.owner%3Ddehps-next%22%5D%7D"):
         images[image["Id"]] = image["Size"]
@@ -172,7 +181,8 @@ def sample():
             "writable_bytes": development.get("SizeRw", 0),
             "running": development["State"]["Running"],
         }
-        images[development["Image"]] = container_image_size(development)
+        if development["Image"] not in images:
+            images[development["Image"]] = container_image_size(development)
     base = get("/images/dehps-next-dependencies:p0p1/json")
     images[base["Id"]] = base["Size"]
     # Docker's global disk-usage scan can stall for minutes while a model generates.
@@ -211,7 +221,8 @@ def sample():
     other = sum(p.stat().st_size for p in runtime.iterdir() if p.is_file() and not p.is_symlink())
     return {
         "owner": "dehps-next",
-        "at": datetime.now(UTC).isoformat(),
+        "at": observed_at.isoformat(),
+        "sample_completed_at": datetime.now(UTC).isoformat(),
         "complete": True,
         "disk_total": disk.total,
         "disk_free": disk.free,
@@ -234,13 +245,15 @@ def sample():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--once", action="store_true")
+    parser.add_argument("--output", type=Path, help="Isolated acceptance receipt inside this repository's runtime")
     args = parser.parse_args()
-    target = ROOT / "runtime/host/telemetry.json"
+    target = args.output.resolve() if args.output else ROOT / "runtime/host/telemetry.json"
+    if not target.is_relative_to(ROOT / "runtime"):
+        raise SystemExit("Telemetry output must remain inside the named Next runtime")
     target.parent.mkdir(parents=True, exist_ok=True)
     while True:
         try:
             value = sample()
-            value["image_gc"] = retire_images()
         except Exception as exc:
             logging.getLogger("dehps_next_host").exception("Next telemetry failed")
             value = {
@@ -249,6 +262,14 @@ def main():
                 "complete": False,
                 "error": type(exc).__name__,
             }
+        else:
+            try:
+                value["image_gc"] = retire_images()
+            except Exception as exc:
+                # Fresh, complete physical/accounting observations remain valid.
+                # Failed retirement performs no optimistic admission or deletion.
+                logging.getLogger("dehps_next_host").exception("Next image retirement held")
+                value["image_gc"] = {"state": "HOLD", "error": type(exc).__name__}
         temporary = target.with_suffix(".pending")
         temporary.write_text(json.dumps(value, sort_keys=True) + "\n")
         temporary.replace(target)

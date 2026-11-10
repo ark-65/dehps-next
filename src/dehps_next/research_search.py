@@ -10,6 +10,10 @@ from .research_policy import train_policy
 
 
 def novel_specs(db, dataset, code, topic):
+    from .color_split import CALIBRATED_TOPIC
+    if topic.get("name") == CALIBRATED_TOPIC["name"]:
+        from .research_calibration import proposals as calibrated_proposals
+        return calibrated_proposals(db, dataset)
     from .color_split import TOPIC as SPLIT_TOPIC
     if topic.get("name") == SPLIT_TOPIC["name"]:
         from .research_specialists import proposals as specialist_proposals
