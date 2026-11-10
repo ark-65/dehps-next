@@ -534,6 +534,9 @@ class Research:
                 )
                 self.db.complete(c, job)
             return
+        from .research_specialists import bootstrap
+        if bootstrap(self, job, context):
+            return
         if (
             context["config"].get("proposal_policy") in ("candidates-v2", "candidates-v3", "candidates-v4")
             and context["config"]["planner"] == "local"
