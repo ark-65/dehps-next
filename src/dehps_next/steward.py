@@ -286,7 +286,9 @@ class Steward:
     def maintain(self):
         from .research_memory import compact_due
         from .training_observer import sample_due
+        from .research_quality import review_completed
 
+        quality_reviews = review_completed(self.db)
         observed = sample_due(self.db)
         compact_due(self.db)
         with self.db.pool.connection() as c, c.transaction():
@@ -307,4 +309,5 @@ class Steward:
         programs = self.tick()
         continuation = fill_gap(self.db, self.artifacts)
         return {"gc_preview": preview, "gc": sweep, "programs": programs, "continuation": continuation, "soak_samples": observed,
+                "batch_quality_reviews": quality_reviews,
                 "probability_research": maintain(self.db, self.artifacts)}

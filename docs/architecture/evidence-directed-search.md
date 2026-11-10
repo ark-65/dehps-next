@@ -32,6 +32,22 @@ opportunistic CPU continuation. Cached historical scores, imported pilot evidenc
 and genuinely new origin fits remain distinct. Existing Qwen qualification,
 profile, production cadence and per-node feedback receipts are unchanged.
 
+The steward appends one idempotent `BATCH_QUALITY_REVIEW` event for each completed
+owned frontier campaign. It records each candidate's actual parent,100/50/10
+red/blue counts, exact paired deltas, execution receipts, promotion result and a
+digest of the source facts. It separately counts red vetoes, blue vetoes, absent
+recent progress and recent gains vetoed by nested windows. Skipped nodes are not
+evaluations. These immutable reviews survive optional graph retirement and do
+not add independent draw labels or change model eligibility.
+
+At a non-improving block boundary, use up to four recent reviews matching the
+current dataset, numerical identity and parent recipe. At least24 reviewed
+candidates are required for a cause-directed question change. Red veto dominance
+prefers capacity or representation; blue dominance prefers representation or
+history, avoiding the question just tried. Tied or insufficient review coverage
+uses the registered sequence. Parent improvements retain priority. Record the
+review event IDs, diagnostic counts and reason in the next proposal batch.
+
 ## Direction-comparison evidence
 
 Use Next-only datasets and isolated Python3.12/real Next PostgreSQL for frozen

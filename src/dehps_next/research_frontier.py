@@ -69,7 +69,19 @@ def proposals(db, dataset, *, minimum=6):
             if previous["basis"]["parent_digest"] != digest(parent) or evidence["improved"]:
                 stage = 0
             elif evidence["completed"] >= 24:
-                stage = (stage + 1) % 3
+                from .research_quality import recent_diagnosis
+
+                diagnosis = recent_diagnosis(c, dataset, numeric, parent)
+                evidence["paired_diagnosis"] = diagnosis
+                if diagnosis["evaluated_candidates"] >= 24 and diagnosis["red_vetoes"] > diagnosis["blue_vetoes"]:
+                    stage = 1 if stage != 1 else 2
+                    evidence["change_reason"] = "RED_GATES_DOMINATE;TEST_CAPACITY_OR_REPRESENTATION"
+                elif diagnosis["evaluated_candidates"] >= 24 and diagnosis["blue_vetoes"] > diagnosis["red_vetoes"]:
+                    stage = 2 if stage != 2 else 1
+                    evidence["change_reason"] = "BLUE_GATES_DOMINATE;TEST_REPRESENTATION_OR_HISTORY"
+                else:
+                    stage = (stage + 1) % 3
+                    evidence["change_reason"] = "TIED_OR_INSUFFICIENT_REVIEW_COVERAGE;NEXT_REGISTERED_QUESTION"
         candidates = list(carry)
         if generation == 1:
             candidates.extend(untried_specs(db, dataset, initial_specs(parent), connection=c))
