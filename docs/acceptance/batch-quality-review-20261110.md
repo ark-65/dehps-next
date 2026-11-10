@@ -19,8 +19,10 @@ Actual isolated Python3.12 / Next PostgreSQL acceptance reviewed four existing
 real Worker campaigns containing28 evaluated children. Every saved red/blue delta
 was recomputed against its exact parent and all source-fact digests were checked.
 A second run wrote no duplicate reviews. The comparable summary had10 red-veto
-candidates,25 blue-veto candidates,27 without recent progress, and one recent
-gain rejected by a nested window. Candidate counts are not independent draw
+candidates,25 blue-veto candidates,27 without recent progress, and no
+nested-only vetoes. A prototype misclassified a recent red/blue tradeoff as a
+nested-only veto; versioned review records preserve that failed prototype while
+the corrected review counts the100-issue tradeoff correctly. Candidate counts are not independent draw
 counts. This metadata acceptance executed no new fits or inference calls.
 
 Numerical fitting, original promotion/qualification, eight-CPU training, Qwen

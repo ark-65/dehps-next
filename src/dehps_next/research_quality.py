@@ -8,7 +8,7 @@ from .research_memory import feedback_contract, insert_event
 def review_completed(db):
     campaigns = db.rows("""SELECT r.* FROM research_campaigns r
         WHERE r.program_id='autonomous-v2' AND r.topic=%s AND r.status='BATCH_COMPLETE'
-        AND NOT EXISTS(SELECT 1 FROM research_memory_events e WHERE e.event_key='batch-quality:'||r.id)
+        AND NOT EXISTS(SELECT 1 FROM research_memory_events e WHERE e.event_key='batch-quality:v1:'||r.id)
         ORDER BY r.created_at DESC LIMIT 4""", (NAME,))
     reviewed = []
     for campaign in campaigns:
@@ -31,13 +31,16 @@ def review_completed(db):
             diagnosis["red_vetoes"] += red
             diagnosis["blue_vetoes"] += blue
             diagnosis["no_recent_progress"] += not recent_progress
-            diagnosis["nested_only_vetoes"] += recent_progress and (red or blue)
+            diagnosis["nested_only_vetoes"] += (
+                recent_progress and all(v >= 0 for v in delta["recent"].values())
+                and any(v < 0 for k in ("recent50", "recent10") for v in delta[k].values())
+            )
             candidates.append({"node": n["id"], "parent_node": n["parent_id"],
                                "paired_parent_windows": n["paired_parent_windows"],
                                "spec": n["spec"], "verdict": n["status"],
                                "windows": n["business"]["windows"], "paired_deltas": delta,
                                "execution": n["execution"]})
-        payload = {"campaign": campaign["id"], "dataset": campaign["dataset_id"],
+        payload = {"version": 1, "campaign": campaign["id"], "dataset": campaign["dataset_id"],
                    "protocol_digest": campaign["protocol"]["digest"],
                    "parent_spec": parents[0]["spec"], "parent_spec_digest": digest(parents[0]["spec"]),
                    "parent_windows": parents[0]["business"]["windows"], "candidates": candidates,
@@ -49,7 +52,7 @@ def review_completed(db):
         payload["source_facts_sha256"] = digest({k: payload[k] for k in
             ("dataset", "protocol_digest", "parent_windows", "candidates", "untrained_skips")})
         with db.pool.connection() as c, c.transaction():
-            insert_event(c, campaign, feedback_contract(campaign), "batch-quality:" + campaign["id"],
+            insert_event(c, campaign, feedback_contract(campaign), "batch-quality:v1:" + campaign["id"],
                          "BATCH_QUALITY_REVIEW", payload)
         reviewed.append({"campaign": campaign["id"], "promotions": payload["promotions"],
                          "diagnosis": diagnosis})
@@ -59,6 +62,7 @@ def review_completed(db):
 def recent_diagnosis(c, dataset, numeric, parent):
     rows = c.execute("""SELECT seq,payload FROM research_memory_events
         WHERE dataset_id=%s AND numeric_digest=%s AND kind='BATCH_QUALITY_REVIEW'
+          AND payload->>'version'='1'
         ORDER BY seq DESC LIMIT 8""", (dataset, numeric)).fetchall()
     rows = [r for r in rows if r["payload"]["parent_spec_digest"] == digest(parent)][:4]
     return {"review_events": [r["seq"] for r in rows],
