@@ -10,6 +10,9 @@ from .research_policy import train_policy
 
 
 def novel_specs(db, dataset, code, topic):
+    from .research_frontier import NAME, proposals
+    if topic.get("name") == NAME:
+        return proposals(db, dataset)
     from .multiscale import METHODS, initial_specs
     from .research_memory import untried_specs
 
@@ -59,6 +62,9 @@ def extended_specs(db, dataset, topic, *, minimum=1):
     from .domain import digest
     from .release import numeric_identity
     from .research_memory import untried_specs
+    from .research_frontier import NAME, proposals
+    if topic.get("name") == NAME:
+        return proposals(db, dataset, minimum=minimum)
 
     numeric = numeric_identity()
     key = digest([dataset, numeric, topic["name"]])
