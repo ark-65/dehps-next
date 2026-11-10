@@ -93,7 +93,7 @@ def cross_round_feedback(db, campaign, selected):
         )
         if len(evidence) == 4:
             break
-    return {
+    result = {
         "contract": args[0],
         "parent_periods_digest": args[1],
         "families": families,
@@ -109,6 +109,11 @@ def cross_round_feedback(db, campaign, selected):
         ],
         "scope": "COMPARABLE_RECIPE_TRIALS;SAME100_ISSUES_NOT_ADDITIONAL_DRAWS",
     }
+    from .research_specialists import study_context
+    structural = study_context(db, campaign)
+    if structural:
+        result["structural_study"] = structural
+    return result
 
 
 def candidate_pool(db, campaign, selected, value, count):

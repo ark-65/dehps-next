@@ -9,8 +9,9 @@ from torch import nn
 from .domain import digest
 from .model import encode_torch, load_torch, weight_digest
 from .multiscale import METHODS as DYNAMIC_METHODS
+from .color_split import METHODS as SPLIT_METHODS
 
-METHODS = ("raw", "fft", "ridge", "newton", *DYNAMIC_METHODS)
+METHODS = ("raw", "fft", "ridge", "newton", *DYNAMIC_METHODS, *SPLIT_METHODS)
 
 
 def features(spec, parent_summary):

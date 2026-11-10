@@ -113,6 +113,8 @@ def make_context(
             for r in memory.get("families", [])
         ]
         context["comparable_trials"] = memory["trials"]
+        if memory.get("structural_study"):
+            context["structural_study"] = memory["structural_study"]
     text = {"type": "string"}
     schema = {
         "type": "object",

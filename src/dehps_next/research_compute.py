@@ -21,10 +21,14 @@ from .model import Recipe, RedBlueNet, encode_torch, load_torch, vectors, weight
 
 def validate_spec(spec):
     from .multiscale import METHODS, validate
+    from .color_split import METHODS as SPLIT_METHODS, blue_spec, is_split
 
     allowed = {"method", "window", "hidden", "epochs", "learning_rate", "weight_decay", "train_history"}
-    if set(spec) != allowed or spec["method"] not in ("raw", "fft", "ridge", "newton", *METHODS):
+    if set(spec) != allowed or spec["method"] not in ("raw", "fft", "ridge", "newton", *METHODS, *SPLIT_METHODS):
         raise DomainError("INVALID_RESEARCH_SPEC", "Unknown feature, method or parameter")
+    if is_split(spec):
+        validate_spec(blue_spec(spec))
+        return spec
     if any(type(spec[k]) is not int for k in ("window", "hidden", "epochs", "train_history")):
         raise DomainError("INVALID_RESEARCH_SPEC", "Integer model parameters required")
     if spec["method"] in METHODS:
@@ -71,6 +75,10 @@ def _features(windows, method):
 
 def fit_prior(prior, spec, seed, pulse, initial=None):
     validate_spec(spec)
+    from .color_split import fit as split_fit, is_split
+
+    if is_split(spec):
+        return split_fit(prior, spec, seed, pulse, initial)
     from .multiscale import fit, is_dynamic
 
     if is_dynamic(spec):
@@ -206,7 +214,7 @@ def _fit_origin(prior, spec, seed):
     return (
         red,
         blue,
-        {key: trained[key] for key in ("weight_digest", "initial_weight_digest", "mathematical_digest")},
+        {key: trained[key] for key in ("weight_digest", "initial_weight_digest", "mathematical_digest", "gradient_steps")},
     )
 
 
@@ -300,6 +308,7 @@ def compute_node(
     threads=None,
 ):
     matrix = vectors(snapshot["rows"])
+    from .color_split import steps as fit_steps, is_split
     all_origins = sorted(protocol["origins"]) + (sorted(protocol["reserve"]) if include_reserve else [])
     identity = digest([spec, protocol["digest"], snapshot["cutoff"]])
     rows = []
@@ -390,9 +399,10 @@ def compute_node(
             "gradient_steps_executed_this_attempt": (
                 len(all_origins) - restored_origins + 1 + int(anchor["inherited"])
             )
-            * spec["epochs"],
+            * fit_steps(spec),
             "committed_origin_and_anchor_steps": (len(all_origins) + 1 + int(anchor["inherited"]))
-            * spec["epochs"],
+            * fit_steps(spec),
+            "component_fits_executed_this_attempt": (len(all_origins) - restored_origins + 1 + int(anchor["inherited"])) * (2 if is_split(spec) else 1),
             "publication_anchor_fresh": not publication["inherited"],
             "publication_weight_digest": publication["weight_digest"],
             "step_count_scope": "unique_completed_fits;excludes_interrupted_or_recomputed_work",
@@ -408,6 +418,10 @@ def compute_node(
 def restore_anchor(data):
     anchor = load_torch(data)
     spec = anchor["spec"]
+    from .color_split import is_split, restore as restore_split
+
+    if is_split(spec):
+        return restore_split(anchor)
     from .multiscale import is_dynamic, restore
 
     if is_dynamic(spec):
@@ -444,6 +458,10 @@ def predict_anchor(data, rows):
     spec = anchor["spec"]
     if anchor["through_issue"] != rows[-1]["issue"]:
         raise DomainError("ANCHOR_DATA_CHANGED", "Current anchor must cover exactly the validated dataset")
+    from .color_split import is_split, predict as predict_split
+
+    if is_split(spec):
+        return predict_split(anchor, rows)
     from .multiscale import is_dynamic, predict
 
     if is_dynamic(spec):
