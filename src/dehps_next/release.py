@@ -31,10 +31,14 @@ def numeric_identity():
         "scores.py",
         "multiscale.py",
         "color_split.py",
+        "red_cardinality.py",
     ]
     # Exact orchestration source audited against the unchanged v2 fitter, scores, anchors and RNG.
     # Unknown future edits get a new numeric identity; no blanket compatibility mapping.
     equivalent_compute = {
+        # Only independent-origin pool ceiling changed8 to20; all100 probabilities,
+        # weights and math digests matched for8/12/16/20 one-thread fitters.
+        "346e36e829554d858db553c5cbdd20b1f3cee852c156398f1736b81d91e769d7": "e6610e2b550f8a2da465bf57f1bc8168c5af9eb609013a914596f9b5ab26e556",
         "4d6ac973f26418215fee5e15432df5a424135028126ebc53ef87aaec14bdadba": "4e6efa00349cdbb4da980ffab37b2b24c4c6d7c9cfa40b6e885424c8a9d38d78",
         # Only timeout classification changed to a renewable slice; fitter/RNG/scores unchanged.
         "bb270358327cbb5f7ee6eafbf2a198749d50243440c2ea13c47ce35ebfef91f8": "4e6efa00349cdbb4da980ffab37b2b24c4c6d7c9cfa40b6e885424c8a9d38d78",

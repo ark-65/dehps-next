@@ -320,8 +320,8 @@ def compute_node(
             raise DomainError("RESEARCH_CHECKPOINT_GAP", "Research cursor is not a prefix")
     restored_origins = len(rows)
     start = time.monotonic()
-    if not 1 <= processes <= 8:
-        raise DomainError("RESEARCH_PARALLELISM_LIMIT", "Expected one to eight isolated origin fitters")
+    if not 1 <= processes <= 20:
+        raise DomainError("RESEARCH_PARALLELISM_LIMIT", "Expected one to twenty isolated origin fitters")
     threads = threads or torch.get_num_threads()
     if threads != torch.get_num_threads():
         raise DomainError("NUMERIC_THREADS_CHANGED", "Parent/child fitter threads must match frozen contract")

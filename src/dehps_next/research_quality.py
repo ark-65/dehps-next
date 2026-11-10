@@ -2,7 +2,7 @@
 
 from .domain import digest
 from .research_frontier import NAME
-from .color_split import TOPIC as SPLIT_TOPIC
+from .color_split import TOPIC as SPLIT_TOPIC, CALIBRATED_TOPIC
 from .research_memory import feedback_contract, insert_event
 
 
@@ -10,7 +10,7 @@ def review_completed(db):
     campaigns = db.rows("""SELECT r.* FROM research_campaigns r
         WHERE r.program_id='autonomous-v2' AND r.topic=ANY(%s) AND r.status='BATCH_COMPLETE'
         AND NOT EXISTS(SELECT 1 FROM research_memory_events e WHERE e.event_key='batch-quality:v1:'||r.id)
-        ORDER BY r.created_at DESC LIMIT 4""", ([NAME, SPLIT_TOPIC["name"]],))
+        ORDER BY r.created_at DESC LIMIT 4""", ([NAME, SPLIT_TOPIC["name"], CALIBRATED_TOPIC["name"]],))
     reviewed = []
     for campaign in campaigns:
         rows = db.rows("""SELECT id,parent_id,spec,status,evaluation->'business' AS business,

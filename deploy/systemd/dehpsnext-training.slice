@@ -1,10 +1,10 @@
 [Unit]
-Description=Shared eight-CPU DEHPS Next production and acceptance fitting pool
+Description=Shared twelve-CPU DEHPS Next production and acceptance fitting pool
 Before=docker.service
 
 [Slice]
 AllowedCPUs=0-19
-CPUQuota=800%
+CPUQuota=1200%
 MemoryAccounting=yes
 
 [Install]

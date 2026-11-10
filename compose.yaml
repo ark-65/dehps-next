@@ -7,7 +7,7 @@ x-app: &app
   env_file: .env
   environment: &app-env
     DEHPS_NEXT_TRAINING_THREADS: "1"
-    DEHPS_NEXT_ORIGIN_PROCESSES: "8"
+    DEHPS_NEXT_ORIGIN_PROCESSES: "12"
     DEHPS_NEXT_RESEARCH_AGENT: candidates-v4
     DEHPS_NEXT_RESEARCH_PIPELINE_DEPTH: "2"
     DEHPS_NEXT_RESEARCH_VALIDATION: recent-windows-v4
@@ -69,7 +69,7 @@ services:
     <<: *app
     cgroup_parent: dehpsnext-training.slice
     command: [worker, --role, compute]
-    cpus: 8
+    cpus: 12
     mem_limit: 6g
     pids_limit: 256
     environment:

@@ -90,7 +90,7 @@ if args.mode in ("apply", "check"):
         assert properties(unit)["EffectiveCPUs"] == "20-21", (unit, properties(unit))
     assert properties("dehpsnext.slice")["EffectiveCPUs"] == "0-19"
     assert properties("dehpsnext-training.slice")["EffectiveCPUs"] == "0-19"
-    assert call("systemctl", "show", "dehpsnext-training.slice", "-p", "CPUQuotaPerSecUSec", "--value") == "8s"
+    assert call("systemctl", "show", "dehpsnext-training.slice", "-p", "CPUQuotaPerSecUSec", "--value") == "12s"
     assert call("systemctl", "is-enabled", BOOT_UNIT) == "enabled"
     assert call("systemctl", "is-active", BOOT_UNIT) == "active"
     result = {
