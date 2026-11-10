@@ -49,10 +49,16 @@ def cross_round_feedback(db, campaign, selected):
         args,
     )
     candidates = db.rows(
-        "SELECT DISTINCT ON(spec->>'method') seq,node_id,spec,payload-'period_outcomes'-'origin_provenance' AS p"
+        # Choose narrow identities before decoding/subtracting the large archived
+        # per-origin payload. Preserve the exact family/verdict/sequence ordering.
+        "WITH chosen AS MATERIALIZED (SELECT DISTINCT ON(spec->>'method') "
+        "seq,spec->>'method' AS method,(payload->>'verdict'='PRUNE_REGRESSION') AS pruned"
         + base
         + " AND payload->>'verdict' IN ('INCONCLUSIVE','PRUNE_REGRESSION')"
-        " ORDER BY spec->>'method',(payload->>'verdict'='PRUNE_REGRESSION') DESC,seq DESC",
+        " ORDER BY spec->>'method',(payload->>'verdict'='PRUNE_REGRESSION') DESC,seq DESC)"
+        " SELECT e.seq,e.node_id,e.spec,e.payload-'period_outcomes'-'origin_provenance' AS p"
+        " FROM chosen s JOIN research_memory_events e ON e.seq=s.seq"
+        " ORDER BY s.method,s.pruned DESC,s.seq DESC",
         args,
     )
     # Include a real red/blue tradeoff, rather than only the most recent failure.
