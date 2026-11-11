@@ -7,6 +7,7 @@ from psycopg.types.json import Jsonb
 
 from .calendar import CALENDAR, ZONE, next_target
 from .domain import now
+from .data import CWL_URL
 from .errors import DomainError
 from .forecast import LOOP, Forecast
 from .mail import Mail
@@ -278,8 +279,27 @@ class Reports:
                 },
                 "STATUS",
             )
+        # A verified result is independently useful even when settlement is
+        # delayed. Keep its own immutable identity so a later POST can follow.
+        for result in self.db.rows("""SELECT d.issue,d.red,d.blue,p.first_verified_at,p.source_id
+            FROM draws d JOIN official_publications p USING(issue)
+            JOIN sources source ON source.id=p.source_id
+            WHERE p.first_verified_at<=now() AND d.draw_at<=now()
+              AND p.provenance='OFFICIAL_CWL_COMPLETE_LABEL_FIRST_VERIFIED_IN_NEXT'
+              AND source.provenance LIKE 'OFFICIAL_CWL%%'
+              AND source.url=%s
+              AND EXISTS(SELECT 1 FROM mail_reports pre WHERE pre.issue=d.issue AND pre.kind='PRE_FINAL')
+              AND NOT EXISTS(SELECT 1 FROM mail_reports r WHERE r.issue=d.issue AND r.kind IN ('POST','DRAW_RESULT'))
+            ORDER BY d.issue DESC LIMIT 32""", (CWL_URL,)):
+            self.mail.queue("DRAW_RESULT", result["issue"], {
+                "title": f"[DEHPS Next] {result['issue']}期官方开奖结果（结算待完成）",
+                "lines": [f"期号：{result['issue']}",
+                          f"官方开奖号：{' '.join(f'{v:02d}' for v in result['red'])} + {result['blue']:02d}",
+                          f"官方完整结果核验时间：{result['first_verified_at'].astimezone(ZONE).isoformat()}",
+                          "预测结算尚未完成；本邮件先提供已核验的开奖号码，结算完成后另发复盘。",
+                          f"Next官方来源收据：{result['source_id']}"]}, "OFFICIAL_RESULT")
         overdue = self.db.rows(
-            "SELECT p.issue FROM predictions p JOIN cycles cy ON cy.id=p.cycle_id JOIN targets t ON t.issue=p.issue WHERE cy.loop_id=%s AND t.draw_at<now()-interval '1 hour' AND NOT EXISTS(SELECT 1 FROM mail_reports r WHERE r.kind='POST' AND r.issue=p.issue) LIMIT 1",
+            "SELECT p.issue FROM predictions p JOIN cycles cy ON cy.id=p.cycle_id JOIN targets t ON t.issue=p.issue WHERE cy.loop_id=%s AND t.draw_at<now()-interval '1 hour' AND NOT EXISTS(SELECT 1 FROM mail_reports r WHERE r.kind IN ('POST','DRAW_RESULT') AND r.issue=p.issue) LIMIT 1",
             (LOOP,),
         )
         if overdue:

@@ -184,7 +184,12 @@ class Resources:
                 "SELECT l.config FROM cycles cy JOIN loops l ON l.id=cy.loop_id WHERE cy.id=%s",
                 (job["cycle_id"],),
             ).fetchone()
-            cpu = int(core["config"]["recipe"].get("threads", self.db.settings.training_threads))
+            if core["config"].get("externally_sealed") and job["kind"] == "EVALUATE":
+                # Research forecasts already own a sealed model. Settlement only
+                # compares immutable predictions with the official label.
+                cpu = 1
+            else:
+                cpu = int(core["config"]["recipe"].get("threads", self.db.settings.training_threads))
             wall, write = 600, 64 * 1024**2
         reason = None
         # A renewable execution slice is not a lifetime or consumption allowance.
