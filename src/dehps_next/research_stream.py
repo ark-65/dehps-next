@@ -73,6 +73,10 @@ def chat(payload, progress, pulse, job, *, silence_seconds=180, path="/api/chat"
                     saved_at = time.monotonic()
                 # Reject a demonstrated generation loop, never a long coherent thought.
                 tail = "".join(thinking if thought else content)[-2048:]
+                from .research_output_guard import check
+
+                if not frame.get("done"):
+                    check(tail)
                 if len(tail) == 2048 and tail[-256:] * 8 == tail:
                     raise DomainError(
                         "LOCAL_MODEL_REPETITION", "Eight identical consecutive256-character blocks"

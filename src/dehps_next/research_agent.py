@@ -272,6 +272,9 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse, *, profil
         )
         with db.pool.connection() as c:
             c.execute("UPDATE research_model_calls SET response=%s WHERE id=%s", (Jsonb(response_ref), call))
+        from .research_output_guard import check
+
+        check(content)
         if not response.get("done") or response.get("done_reason") == "length":
             raise DomainError(
                 "LOCAL_MODEL_TRUNCATED", "Local structured response hit its per-response technical limit"
@@ -298,12 +301,13 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse, *, profil
             "metrics": metrics,
         }
     except Exception as exc:
-        failure = {
-            **(metrics or {}),
-            "failure_code": getattr(exc, "code", type(exc).__name__),
-            "wall_seconds": round(time.monotonic() - started, 4),
-        }
         with db.pool.connection() as c, c.transaction():
+            saved = c.execute("SELECT metrics FROM research_model_calls WHERE id=%s FOR UPDATE", (call,)).fetchone()
+            failure = {
+                **(saved["metrics"] or {}), **(metrics or {}),
+                "failure_code": getattr(exc, "code", type(exc).__name__),
+                "wall_seconds": round(time.monotonic() - started, 4),
+            }
             c.execute(
                 "UPDATE research_model_calls SET state='FAILED',metrics=%s WHERE id=%s",
                 (Jsonb(failure), call),

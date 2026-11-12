@@ -143,6 +143,9 @@ def generate(db, artifacts, campaign, job, call, payload, logical_request, progr
             c.execute("UPDATE research_model_calls SET metrics=%s,response=%s,state='SUCCEEDED' WHERE id=%s",
                       (Jsonb(metrics), Jsonb(saved), child))
             record(c, child, metrics)
+        from .research_output_guard import check
+
+        check(text)
         if (
             type(metrics["eval_count"]) is not int or not 0 < metrics["eval_count"] <= THINKING_TOKENS
             or not metrics["prompt_eval_count"] or metrics["done_reason"] not in ("stop", "length")
