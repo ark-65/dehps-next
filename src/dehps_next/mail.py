@@ -31,8 +31,9 @@ class Mail:
     def queue(self, kind, issue, payload, evidence, cycle_id=None):
         if kind in ("PRE", "PRE_FINAL", "POST"):
             from .local_usage import report_line
+            from .qwen_recovery import report_line as qwen_health_line
 
-            payload = {**payload, "lines": [*payload["lines"], report_line(self.db)]}
+            payload = {**payload, "lines": [*payload["lines"], report_line(self.db), qwen_health_line(self.db)]}
         identity = digest([kind, issue])
         with self.db.pool.connection() as c, c.transaction():
             c.execute(

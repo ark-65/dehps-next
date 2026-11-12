@@ -492,11 +492,23 @@ def propose_batch_v4(controller, campaign, nodes, count, job, pulse):
     profiles = (
         db.rows("SELECT config FROM qwen_selection_profiles WHERE id=%s", (identity,)) if identity else []
     )
+    from .qwen_recovery import RECOVERABLE, arm, new_context_required, recovered
+
+    arm(db, campaign, job)
     state = db.rows(
         "SELECT *,retry_after IS NOT NULL AND retry_after<=now() AS retry_due FROM qwen_selection_state WHERE id=1"
     )[0]
     reason = state["reason"] if state["reason"] and not state["retry_due"] else None
     reason = reason or ("MECHANISM_NOT_VALIDATED" if not profiles else None)
+    if not reason and state["reason"] in RECOVERABLE:
+        layout = int(digest([parent["id"], offered])[:8], 16)
+        candidate_context = make_context(
+            parent["spec"], parent["evaluation"]["business"], offered, memory, count=count,
+            layout_seed=layout, id_seed=layout ^ 0x85EBCA6B,
+            selector_contract=profiles[0]["config"]["selector_contract"],
+        )[0]
+        if new_context_required(db, state, candidate_context):
+            reason = "QWEN_RECOVERY_REQUIRES_NEW_CONTEXT"
     if not reason and profiles[0]["config"].get("selector_contract") in CONTRACTS:
         reason = short_admission(db, job, identity, campaign, memory)
     receipts = []
@@ -652,6 +664,7 @@ def propose_batch_v4(controller, campaign, nodes, count, job, pulse):
             from .research_feedback_delivery import record_deliveries
 
             record_deliveries(c, campaign, deliveries, audit)
+            recovered(c, campaign, identity, receipts[0]["call_id"], audit)
     for pick in picks:
         pick.update(
             source=source,
