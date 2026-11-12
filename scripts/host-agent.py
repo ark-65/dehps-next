@@ -7,6 +7,7 @@ import logging
 import os
 import socket
 import subprocess
+import threading
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -52,18 +53,6 @@ def get(path, optional=False):
             logging.getLogger("dehps_next_host").warning("Retrying bounded Docker read: %s", path)
         finally:
             connection.close()
-
-
-def container_image_size(info):
-    image = get(f"/images/{info['Image']}/json", optional=True)
-    if image is not None:
-        return image["Size"]
-    # Docker's containerd store can stop resolving an old config ID after tag replacement.
-    # The container's full rootfs size is a conservative bound including shared base layers.
-    size = info.get("SizeRootFs", 0)
-    if size <= 0:
-        raise RuntimeError("No conservative size for the still-referenced Next container image")
-    return size
 
 
 def retire_images():
@@ -117,6 +106,32 @@ def retire_images():
     return {"deleted_lifetime": ledger["deleted"], "candidates": len(ledger["candidates"])}
 
 
+class ImageRetirement:
+    """Optional Docker inventory must never delay fresh physical admission data."""
+
+    def __init__(self):
+        self.thread = None
+        self.next_attempt = 0
+        self.result = {"state": "PENDING"}
+
+    def run(self):
+        try:
+            self.result = {"state": "COMPLETE", **retire_images()}
+        except Exception as exc:
+            logging.getLogger("dehps_next_host").exception("Next image retirement held")
+            self.result = {"state": "HOLD", "error": type(exc).__name__}
+
+    def observe(self):
+        if self.thread is not None and self.thread.is_alive():
+            return {"state": "RUNNING"}
+        result = dict(self.result)
+        if time.monotonic() >= self.next_attempt:
+            self.next_attempt = time.monotonic() + 300
+            self.thread = threading.Thread(target=self.run, daemon=True)
+            self.thread.start()
+        return result
+
+
 def size(path, allow_links=False):
     if path.is_symlink():
         if allow_links:
@@ -124,20 +139,21 @@ def size(path, allow_links=False):
         raise RuntimeError("Symlink in owned telemetry scope")
     if not path.exists():
         return 0
-    total = 0
-    for parent, dirs, files in os.walk(path, followlinks=False):
-        for name in dirs + files:
-            item = Path(parent) / name
-            if item.is_symlink() and not allow_links:
-                raise RuntimeError("Symlink in owned telemetry scope")
-        for name in files:
-            try:
-                total += (Path(parent) / name).lstat().st_size
-            except FileNotFoundError:
-                continue  # Atomic writers and GC can retire a listed temporary file.
-        total += sum(
-            (Path(parent) / name).lstat().st_size for name in dirs if (Path(parent) / name).is_symlink()
-        )
+    total, pending = 0, [path]
+    while pending:
+        with os.scandir(pending.pop()) as entries:
+            for item in entries:
+                try:
+                    if item.is_symlink():
+                        if not allow_links:
+                            raise RuntimeError("Symlink in owned telemetry scope")
+                        total += item.stat(follow_symlinks=False).st_size
+                    elif item.is_dir(follow_symlinks=False):
+                        pending.append(item.path)
+                    else:
+                        total += item.stat(follow_symlinks=False).st_size
+                except FileNotFoundError:
+                    continue  # Atomic writers and GC can retire a listed temporary file.
     return total
 
 
@@ -150,9 +166,9 @@ def sample():
         for line in Path("/proc/meminfo").read_text().splitlines()
     }
     disk = disk_usage(ROOT)
-    containers, images = {}, {}
+    containers = {}
     for name in NAMES:
-        info = get(f"/containers/{name}/json?size=true")
+        info = get(f"/containers/{name}/json")
         if (
             info["Name"] != "/" + name
             or info["Config"].get("Labels", {}).get("com.docker.compose.project") != "dehps-next-p0p1"
@@ -164,27 +180,18 @@ def sample():
             "memory": stats.get("memory_stats", {}).get("usage", 0),
             "running": info["State"]["Running"],
             "oom_killed": info["State"].get("OOMKilled", False),
-            "writable_bytes": info.get("SizeRw", 0),
+            "writable_accounting": "INCLUDED_IN_DOCKER_DEVICE_UPPER_BOUND",
         }
-        if info["Image"] not in images:
-            images[info["Image"]] = container_image_size(info)
-    # Include registered build images, and the fixed dependency cache; never prune shared Docker state.
-    for image in get("/images/json?filters=%7B%22label%22%3A%5B%22io.dehps-next.owner%3Ddehps-next%22%5D%7D"):
-        images[image["Id"]] = image["Size"]
-    development = get("/containers/dehps-next-dev/json?size=true", optional=True)
+    development = get("/containers/dehps-next-dev/json", optional=True)
     if development:
         if not any(
             m.get("Source") == str(ROOT) and m.get("Destination") == "/app" for m in development["Mounts"]
         ):
             raise RuntimeError("Development container ownership mismatch")
         containers["dehps-next-dev"] = {
-            "writable_bytes": development.get("SizeRw", 0),
+            "writable_accounting": "INCLUDED_IN_DOCKER_DEVICE_UPPER_BOUND",
             "running": development["State"]["Running"],
         }
-        if development["Image"] not in images:
-            images[development["Image"]] = container_image_size(development)
-    base = get("/images/dehps-next-dependencies:p0p1/json")
-    images[base["Id"]] = base["Size"]
     # Docker's global disk-usage scan can stall for minutes while a model generates.
     # Bound shared cache by its entire backing device instead of treating a slow
     # optional accounting scan as missing physical memory/disk telemetry. This is
@@ -204,7 +211,9 @@ def sample():
         "application": size(runtime / "application"),
         "inference": size(runtime / "inference"),
         "database": pg,
-        "environment": sum(images.values()),
+        # A physical upper bound includes all Next images and writable layers,
+        # even when Docker's image inventory hangs or a new build is registered.
+        "environment": disk.total,
         "backups": size(runtime / "backups"),
         "staging": sum(
             size(p)
@@ -233,12 +242,12 @@ def sample():
         "containers": containers,
         "shared_build_cache_upper_bytes": shared_cache,
         "shared_build_cache_accounting": "WHOLE_BACKING_DEVICE_UPPER_BOUND;NOT_OBSERVED_CACHE_USAGE",
+        "environment_accounting": "WHOLE_BACKING_DEVICE_UPPER_BOUND;INCLUDES_IMAGES_AND_WRITABLE_LAYERS;NOT_ATTRIBUTED_USAGE",
         "owned_upper_bytes": sum(categories.values())
         + shared_cache
         + repo
-        + other
-        + sum(c["writable_bytes"] for c in containers.values()),
-        "accounting": "conservative logical images/log maxima plus whole-device shared-cache bound; physical admission uses fresh free disk and memory",
+        + other,
+        "accounting": "whole-device Docker environment/cache bounds and owned logical files/log maxima; bounds overlap and are not attributed usage; physical admission uses fresh free disk and memory",
     }
 
 
@@ -251,6 +260,7 @@ def main():
     if not target.is_relative_to(ROOT / "runtime"):
         raise SystemExit("Telemetry output must remain inside the named Next runtime")
     target.parent.mkdir(parents=True, exist_ok=True)
+    retirement = ImageRetirement()
     while True:
         try:
             value = sample()
@@ -263,13 +273,7 @@ def main():
                 "error": type(exc).__name__,
             }
         else:
-            try:
-                value["image_gc"] = retire_images()
-            except Exception as exc:
-                # Fresh, complete physical/accounting observations remain valid.
-                # Failed retirement performs no optimistic admission or deletion.
-                logging.getLogger("dehps_next_host").exception("Next image retirement held")
-                value["image_gc"] = {"state": "HOLD", "error": type(exc).__name__}
+            value["image_gc"] = {"state": "NOT_RUN_ONE_SHOT"} if args.once else retirement.observe()
         temporary = target.with_suffix(".pending")
         temporary.write_text(json.dumps(value, sort_keys=True) + "\n")
         temporary.replace(target)
