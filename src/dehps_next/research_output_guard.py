@@ -44,4 +44,3 @@ def check(text):
     evidence = repetition(text)
     if evidence:
         raise DomainError("LOCAL_MODEL_REPETITION", "Short output contains a demonstrated generation loop")
-
