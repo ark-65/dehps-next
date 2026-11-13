@@ -3,6 +3,8 @@
 import argparse
 import hashlib
 import json
+import signal
+import sys
 import time
 
 from psycopg import DatabaseError
@@ -100,6 +102,7 @@ def main():
     parser.add_argument('--verify', action='store_true')
     parser.add_argument('--once', action='store_true')
     args = parser.parse_args()
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     assert args.soak == 'qwen-latency-stability-20261113'
     assert code_identity() == args.controller_source
     settings = Settings.from_env()
