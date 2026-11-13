@@ -113,6 +113,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--operation", required=True, type=Path)
     parser.add_argument("--soak", required=True)
+    parser.add_argument("--interval", type=int, choices=(5, 10), default=10)
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
     op = args.operation.resolve()
@@ -146,7 +147,7 @@ def main():
                       flush=True)
                 if args.once:
                     raise
-            time.sleep(max(1, 10 - (time.monotonic() - start)))
+            time.sleep(max(1, args.interval - (time.monotonic() - start)))
 
 
 if __name__ == "__main__":

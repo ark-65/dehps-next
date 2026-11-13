@@ -34,3 +34,20 @@ This is functional telemetry evidence over a short interval. It does not pass
 Qwen generation, the original144-call qualification, a repaired-source24h soak,
 feedback closure, delivery or predictive acceptance. Primary model/source and
 training allocation are unchanged; legacy DEHPS is untouched.
+
+## Faster telemetry refresh, retained failure
+
+Longer live observation subsequently recorded one application-window subprocess
+timeout. The old snapshot was correctly left unchanged; maximum age before the
+next publication reached31.265989s. Preserve this failure. The short functional
+acceptance above did not establish long-term availability.
+
+The observer now accepts an explicit5-second refresh interval; the default is
+still10. This changes only telemetry polling, never model-request spacing,
+production cadence, the30-second freshness guard or the300-second soak sampler.
+The observation and failure-handling function is byte-identical to PR61.
+
+Actual5-second host/Next PostgreSQL/Python3.12 acceptance:16 samples at primary
+generation6148; maximum capture0.389638s, start gap5.000137s and available snapshot
+age5.389729s. Main services remained running. Zero model requests; Ruff and diff
+checks passed. These short measurements do not prove a fault-free24h window.
