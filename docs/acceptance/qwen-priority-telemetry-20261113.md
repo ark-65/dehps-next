@@ -66,3 +66,25 @@ snapshots while the source remained REVIEW_REQUIRED. Maximum capture10.835069s;
 maximum available age25.269917s, including service startup. Zero model requests or
 audit-created fits; Ruff/diff checks passed. This is publisher lifecycle evidence,
 not training continuity, model repair or24h acceptance.
+
+## Observe the existing legal scheduling bound
+
+The running primary source981cd97c blocks advice both until its original1800s
+cadence expires and, while an error is latched, until `retry_after`. Additional
+new-context, feedback and draw gates can delay it further. The observer previously
+reported only the nominal cadence boundary, understating available idle time
+after a long failed call.
+
+Publish the later of those existing lower bounds, retaining both raw timestamps
+for review. A retry timestamp without a latched reason is ignored, matching the
+application; a missing nominal cadence still fails closed. No scheduler state,
+cooldown or policy changes. Review admission still requires900s headroom, no
+active primary call, fresh telemetry, natural model unload and the existing
+resource/draw guards; preemption remains60s with actual overlap auditing.
+
+Actual read-only source inspection in the primary Python3.12 container confirmed
+both guards and1800s/20-feedback cadence. All31 real host/Next PostgreSQL snapshots
+matched the derived arithmetic. Nominal boundary:2026-11-13 19:58:50.716720Shanghai;
+existing fault cooldown:20:10:53.775131. Maximum capture8.421237s. Zero scheduler
+updates or model requests; Ruff/diff checks passed. This is a scheduling-observation
+correction, not a relaxed900s gate or a model/24h acceptance result.

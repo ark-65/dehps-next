@@ -59,7 +59,11 @@ def database(soak):
       'latest_completed_at',(SELECT max(completed_at) FROM research_nodes),
       'fresh_training_workers',(SELECT count(*) FROM worker_status WHERE
         heartbeat_at>now()-interval '45 seconds' AND state IN ('RUNNING','IDLE')),
-      'primary_next_call_at',extract(epoch FROM last_scheduled_at+interval '1800 seconds'),
+      'primary_next_call_at',CASE WHEN last_scheduled_at IS NOT NULL THEN extract(epoch FROM greatest(
+        last_scheduled_at+interval '1800 seconds',
+        CASE WHEN coalesce(reason,'')<>'' THEN retry_after END)) END,
+      'primary_nominal_call_at',extract(epoch FROM last_scheduled_at+interval '1800 seconds'),
+      'primary_cooldown_not_before',CASE WHEN coalesce(reason,'')<>'' THEN extract(epoch FROM retry_after) END,
       'primary_active_calls',(SELECT count(*) FROM research_model_calls WHERE state='RESERVED'
         AND stage LIKE 'CANDIDATE_SELECTION_V4_%'),
       'program',(SELECT json_build_object('generation',generation,'state',state)
@@ -104,6 +108,9 @@ def observe(pool, soak):
             "training_progress_age_seconds": ended - datetime.fromisoformat(completed).timestamp(),
             "latest_completed_at": completed, "fresh_training_workers": db["fresh_training_workers"],
             "primary_next_call_headroom_seconds": db["primary_next_call_at"] - ended,
+            "primary_next_call_not_before": db["primary_next_call_at"],
+            "primary_nominal_call_not_before": db["primary_nominal_call_at"],
+            "primary_cooldown_not_before": db["primary_cooldown_not_before"],
             "primary_active_calls": db["primary_active_calls"], "primary_draw_paused": draw["paused"],
             "window": draw, "program": db["program"], "soak": db["soak"],
             "observer": "QWEN_PRIORITY_READ_ONLY_V3", "reporting_in_critical_path": False}
