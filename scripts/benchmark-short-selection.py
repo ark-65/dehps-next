@@ -15,6 +15,7 @@ from dehps_next.artifacts import Artifacts
 from dehps_next.config import Settings
 from dehps_next.db import Database
 from dehps_next.domain import digest, now
+from dehps_next.errors import DomainError
 from dehps_next.release import code_identity, numeric_identity
 from dehps_next.research_agent import request_json
 from dehps_next.research_selection import make_context, mechanism_metrics
@@ -38,6 +39,9 @@ def main():
     spec = importlib.util.spec_from_file_location('short_mechanism', Path(__file__).with_name('benchmark-selection.py'))
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
+    spec = importlib.util.spec_from_file_location('fresh_slots', Path(__file__).with_name('qwen-fresh-slots.py'))
+    fresh_slots = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fresh_slots)
     s = Settings.from_env()
     database, runtime = ('dehps_next_qwen_latency_20261113', 'qwen-latency-case') if args.latency_revalidation else (
         'dehps_next_qwen4_grounded_acceptance', 'grounded-case')
@@ -99,6 +103,13 @@ def main():
         freeze['admission_policy'] = admission.POLICY
         freeze['drivers']['qwen-acceptance-admission.py'] = hashlib.sha256(Path(admission.__file__).read_bytes()).hexdigest()
     if revalidation:
+        freeze['drivers']['qwen-fresh-slots.py'] = hashlib.sha256(Path(fresh_slots.__file__).read_bytes()).hexdigest()
+        freeze['fresh_slot_recovery'] = {
+            'started_without_outcome': 'REVIEW_REQUIRED;NEVER_RESAMPLE',
+            'performed_before_ledger': 'RECOVER_EXACT_DURABLE_PAYLOAD;NO_MODEL_CALL',
+            'retry': 'EVERY_NATIVE_PHASE_FAILED;ACTUAL_ZERO_STREAM_BYTES;NO_GENERATED_TEXT_OR_TOKENS',
+            'unclassified_nonempty_failure': 'REVIEW_REQUIRED;NEVER_PHYSICAL_VOID',
+        }
         freeze['revalidation_source'] = {
             'study': revalidation['study'], 'protocol_sha256': revalidation['protocol_sha256'],
             'input_manifest_sha256': digest(revalidation['input_hashes']),
@@ -150,16 +161,26 @@ def main():
         print(json.dumps({'prepared': True, 'inputs_verified': len(inputs), 'freeze': freeze}), flush=True)
         d.close()
         return
-    original = m.recoverable_review
+    original = m.review_one if revalidation else m.recoverable_review
 
     def fresh_review(db, artifacts, campaign, frozen, row, p, arm, variant, seed, **kw):
         expected, _, _, _, _ = make_context(frozen['parent_spec'], frozen['parent_business'],
             row['basis']['offered'], row['basis']['memory'], count=kw.get('count', 1),
             feedback=arm=='feedback', selector_contract=p['selector_contract'], **row['basis']['variants'][variant])
+        slot = None
         if revalidation:
             key = f"{row['pair']}:{arm}:{variant}:{seed}"
             assert digest(expected) == revalidation['input_hashes'][key]
+            slot = fresh_slots.Slot('/operation/fresh-slots', {
+                'corpus': args.corpus, 'campaign': campaign['id'], 'key': key,
+                'context_sha256': digest(expected), 'profile': p,
+            })
         while True:
+            if slot:
+                previous = slot.previous(lambda ids: db.rows(
+                    'SELECT * FROM research_model_calls WHERE id=ANY(%s) ORDER BY id', (ids,)))
+                if previous is not None:
+                    return previous
             if admission:
                 admission.wait(db, '/operation/admission.json', '/operation/admission-events.jsonl')
             else:
@@ -185,10 +206,24 @@ def main():
                 if not ready:
                     time.sleep(10)
                     continue
-            result = original(db, artifacts, campaign, frozen, row, p, arm, variant, seed, **kw)
+            before = db.rows('SELECT coalesce(max(id),0) AS id FROM research_model_calls '
+                             'WHERE campaign_id=%s', (campaign['id'],))[0]['id'] if slot else 0
+            if slot:
+                slot.begin(before)
+            try:
+                result = original(db, artifacts, campaign, frozen, row, p, arm, variant, seed, **kw)
+            except (DomainError, RuntimeError) as exc:
+                if not slot:
+                    raise
+                result = {'valid': False, 'correct': False, 'error': getattr(exc, 'code', type(exc).__name__),
+                          'message': str(exc)[:400]}
             actual = db.rows("""SELECT * FROM research_model_calls WHERE campaign_id=%s
-                AND stage=%s ORDER BY id DESC LIMIT 1""",
-                (campaign['id'], 'CANDIDATE_SELECTION_V4_'+arm.upper()))
+                AND stage=%s AND id>%s ORDER BY id DESC LIMIT 2""",
+                (campaign['id'], 'CANDIDATE_SELECTION_V4_'+arm.upper(), before))
+            if slot:
+                assert len(actual) <= 1, 'Multiple native attempts require review, never select the latest'
+            native = db.rows('SELECT * FROM research_model_calls WHERE attempt_id=%s ORDER BY id',
+                             (actual[0]['attempt_id'],)) if actual else []
             if actual:
                 call = actual[0]
                 metrics = call['metrics'] or {}
@@ -223,7 +258,19 @@ def main():
                     result['scheduling_epoch'] = args.corpus+'-contract'
                 if amendment:
                     result['scheduling_epoch'] = amendment['id']
+                if slot:
+                    slot.finish(result, 'PERFORMED', native)
                 return result
+            if slot:
+                if not native and result.get('error', '').startswith('YIELD_'):
+                    disposition = 'UNPERFORMED_ADMISSION_YIELD'
+                elif fresh_slots.physical_void(native):
+                    disposition = 'PHYSICAL_VOID'
+                else:
+                    disposition = 'REVIEW_REQUIRED'
+                slot.finish(result, disposition, native)
+                if disposition == 'REVIEW_REQUIRED':
+                    raise RuntimeError('Unclassified or partly performed fresh slot preserved; no automatic retry')
             print(json.dumps({'physical_void': result, 'logical_choice_recorded': False}), flush=True)
             time.sleep(15)
 
