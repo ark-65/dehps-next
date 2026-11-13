@@ -239,7 +239,7 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse, *, profil
             record(c, call, metrics)
         # Keep real token receipts even if the provider silently fell back to CPU.
         metrics["inference_backend"] = db.settings.inference_backend
-        if db.settings.inference_backend == "vulkan":
+        if db.settings.inference_backend in ("vulkan", "sycl"):
             resident = request_json("/api/ps", timeout=15)
             loaded = next(
                 (m for m in resident.get("models", []) if m.get("digest") == installed["digest"]),
@@ -253,7 +253,7 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse, *, profil
             }
             if type(size) is not int or type(offloaded) is not int or size <= 0 or offloaded < size:
                 raise DomainError(
-                    "LOCAL_GPU_OFFLOAD_REQUIRED", "Measured Vulkan profile requires full model GPU offload"
+                    "LOCAL_GPU_OFFLOAD_REQUIRED", "Measured GPU profile requires full model GPU offload"
                 )
             if (
                 profile
