@@ -1,9 +1,10 @@
 # Qwen latency investigation and provider-error repair
 
-Date: 2026-11-13. Status: investigation and recorded-error integration replay
-completed; original144-slot latency regression and new elapsed24-hour primary
-observation remain pending. This document is not a successful requalification,
-completed soak, production deployment or predictive-improvement claim.
+Date: 2026-11-13. Status: the original frozen regression ended negative;
+classifier and storage acceptance completed, while the full24-hour primary
+observation remains pending. The retained/fresh diagnostic is inconclusive.
+This document is not a successful requalification, completed soak, primary
+source deployment or predictive-improvement claim.
 
 ## The original341-second call
 
@@ -124,3 +125,83 @@ parent, numerical contract, production1800-second/20-feedback cadence,
 draw-day17:00 pause and complete-official-verification-only resume remain in
 force. No legacy services/code/data, host watchdog, driver or power setting was
 modified. Append final elapsed/latency conclusions only from terminal evidence.
+
+## Frozen regression terminal result
+
+The original negative-futility rule was reached without changing requests,
+seeds, thresholds or the preserved first wrong slot. All15 executed slots were
+rejected for repetition: feedback0/8 correct and control0/7, with zero valid
+replies. Even making all64 remaining feedback requests correct gives64/72,
+88.888889%, below90%. The remaining129 slots stay NOT_RUN. This is an original
+negative terminal result, not a shortened positive acceptance.
+
+The independent original latency calculation has15 logical slots but **zero
+complete measurable two-phase receipts**, so mean/P95 remain null and the144-slot
+latency gate is not passed. Early rejected generation is not a speed gain.
+An additional read-only audit included all20 cohort logical attempts, including
+three earlier uncertain infrastructure failures and two operator interruptions.
+It extended interrupted intervals to actual container-stop timestamps and found
+zero overlap with the complete primary-inference timeline. The original
+qualification receipt and all native attempts remain unchanged.
+
+## Matched512 diagnostic and reporting recovery
+
+The retained-runner cell made one actual logical probe (native51/52). It failed
+with provider repetition after349.7497 logical seconds. The repaired stream
+reader classified the actual provider frame as `LOCAL_MODEL_REPETITION`; native
+child52 retained canonical frame hash
+e58efdadfb338fc1b1bf72aee9f304d87c844c53d47703eea3700771a7426d47.
+Both provider token counts stayed unknown. This adds actual-model execution
+coverage of the classifier to the earlier recorded-frame integration replay;
+it does not establish improved model quality or latency.
+
+The diagnostic reporter then hit a foreign-key error: its new study had no
+condition pair row before inserting the outcome. The model error had already
+been persisted and its job/resources released. The dispatcher refused another
+attempt using the original started marker. A Next-only Python3.12/PostgreSQL
+recovery inserted the missing pair and outcome from the **existing terminal
+native51/52 rows**, verified the exact frozen input/request hashes, and made no
+model request. The unrecorded driver elapsed time stays null;349.7497 is the
+actual native logical wall time, not an estimated driver time.
+
+The tool now inserts/verifies the condition pair before admission and refuses
+any existing native diagnostic stage even if its result-report row is absent.
+Actual isolated invocation of the corrected tool refused the performed warm
+condition before claiming another job: the database still contained52 native
+rows, one warm parent and zero fresh parents. No unit test or extra generation
+was used. The original frozen v1 driver remains preserved separately.
+
+The reporter failure also lost its final PID-binding observation. By recovery
+time the primary model had naturally unloaded. Before/mid-call observations
+showed the retained PID and512 batching, and four kernel fence events matched
+that PID during the attempt, with zero primary-inference overlap. **Missing
+after-PID proof is not imputed or waived.** The fresh cell is therefore NOT_RUN
+under the declared stop rule. The state diagnostic is INCONCLUSIVE; it proves
+neither a cache-state cause nor a fresh-process remedy. Its dispatcher is closed
+against terminal re-entry, verified by an actual zero-request invocation. No
+failed cell, original qualification slot or primary configuration was replaced.
+
+## Actual primary recovery and observation still pending
+
+Production call7034 completed in391.8567 seconds. Audit26874 records actual
+QWEN_COMPARATIVE selection and26875 records RECOVERED_BY_ACTUAL_SELECTION;
+the protected reason cleared through the certified existing recovery path.
+This is actual new-task selection recovery, not a manual lock reset, a passed
+latency gate, a newly verified next-feedback chain or sustained reliability.
+
+A dated primary read at12:52 Shanghai showed the successor still RUNNING with
+18 actual samples, no fresh-fit stall warning and the preserved542.592210-second
+maximum gap. Its12:47:45 sample recorded13,997 fresh origins,1,836,879 gradient
+steps and4,490 reused origins since the successor start. These counters are
+observation/training evidence, not additional draws or predictive improvement.
+The full original24-hour successor deadline remains **2026-11-14 11:14:50.976635
+Shanghai**. No completed long-observation verdict is claimed here.
+
+The private `actual-report.md` updates pending actual progress and writes the
+terminal report only when elapsed soak, original regression, all-attempt audit
+and declared diagnostic outcomes exist. `completed-acceptance-evidence.json`
+is reserved for those real terminal conditions. Main source981cd97c...,12-CPU
+training, accepted parent, original17:00/official-result gate and legacy
+retirement remain unchanged. Code/storage acceptance, negative mechanism/latency
+result, ongoing elapsed observation, delivery and prediction evidence remain
+separate states. No test mail or report-delivery claim was introduced.

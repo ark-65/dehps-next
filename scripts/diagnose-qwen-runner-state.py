@@ -81,6 +81,18 @@ def main():
                            'ON CONFLICT DO NOTHING', (study, Jsonb(frozen), digest(frozen)))
         assert connection.execute('SELECT sha256 FROM research_review_studies WHERE id=%s',
                                   (study,)).fetchone()['sha256'] == digest(frozen)
+        pair = 0 if args.trial == 'warm' else 1
+        basis = {'condition': args.trial, 'source_call': 23, 'input_sha256': digest(context),
+                 'logical_request_sha256': digest(expected), 'num_batch': 512}
+        connection.execute('INSERT INTO research_review_pairs(study_id,pair,basis,sha256) '
+                           'VALUES(%s,%s,%s,%s) ON CONFLICT DO NOTHING',
+                           (study, pair, Jsonb(basis), digest(basis)))
+        assert connection.execute('SELECT sha256 FROM research_review_pairs WHERE study_id=%s AND pair=%s',
+                                  (study, pair)).fetchone()['sha256'] == digest(basis)
+    if db.rows('SELECT id FROM research_model_calls WHERE campaign_id=%s AND stage=%s',
+               ('qwen4-latency-20261113-v1-context',
+                'CANDIDATE_SELECTION_V4_RUNNER_STATE_' + args.trial.upper())):
+        raise RuntimeError('A native diagnostic attempt exists; never resample after a reporting failure')
     assert not db.rows('SELECT 1 FROM research_review_selections WHERE study_id=%s AND arm=%s', (study, args.trial))
     job = db.claim('qwen-runner-state-diagnostic', role='planning')
     if not job:
@@ -148,7 +160,7 @@ def main():
         with db.pool.connection() as connection:
             connection.execute('INSERT INTO research_review_selections(study_id,pair,arm,payload) '
                                'VALUES(%s,%s,%s,%s)',
-                               (study, 0 if args.trial == 'warm' else 1, args.trial,
+                               (study, pair, args.trial,
                                 Jsonb(json.loads(json.dumps(result, default=str)))))
         (operation / ('runner-' + args.trial + '-result.json')).write_text(
             json.dumps(result, default=str, indent=2) + '\n')
