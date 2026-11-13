@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .errors import DomainError
 
-VERSION = "short-output-loop-guard-v1"
+VERSION = "short-output-loop-guard-v2"
 
 
 def identity():
@@ -20,8 +20,18 @@ def identity():
 
 
 def repetition(text):
-    # JSON whitespace/punctuation must not disguise a repeated word or number.
     tail = text[-1024:]
+    # A corrupt stream can contain only quotes/braces: the alphanumeric and
+    # lexical checks below have no observations in that case. Require a long
+    # exact visible-symbol loop; ordinary short JSON delimiters do not qualify.
+    visible = "".join(c for c in tail if not c.isspace())
+    if len(visible) >= 96 and not any(c.isalnum() for c in visible[-96:]):
+        for width in range(1, 17):
+            span = ((96 + width - 1) // width) * width
+            if len(visible) >= span and visible[-width:] * (span // width) == visible[-span:]:
+                return {"kind": "CONSECUTIVE_SYMBOL_UNIT", "unit_characters": width,
+                        "repeated_characters": span}
+    # JSON whitespace/punctuation must not disguise a repeated word or number.
     compact = "".join(c for c in tail if c.isalnum())
     for width in range(1, 33):
         span = max(48, 12 * width)
