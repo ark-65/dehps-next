@@ -56,6 +56,23 @@ runs until their respective original deadlines. Do not merge their overlapping
 training counts or describe the failed run as passed. No successor pass is
 claimed before its own real elapsed evidence is complete.
 
+The successor retained a542.592210-second gap while the bounded observer and
+Steward raced for the original `SKIP LOCKED` rows. The first bounded `--once`
+row-handoff invocation found no due row after the competing transaction
+committed; exit0 alone is not recorded as a committed sample. The helper now
+queues for due owned rows with the original15-second statement timeout and
+three-second lock timeout, then
+calls the unchanged sampler on that same owned connection. The aggregate still
+uses a separate single read-only repeatable-read snapshot. No sample timestamp,
+next-sample clock, counter, warning or existing gap is rewritten. This changes
+lock acquisition fairness, not the300/600/900-second rules or primary services.
+A lock-timeout failure is retained and retries acquisition after one second; no
+lock/query timeout is raised and no sampling gap is hidden.
+Actual Python3.12/Next PostgreSQL validation then committed a real due sample:
+156 blocks in24.567 seconds. The three-second lock timeouts were retained in
+the log; the old944.539696 and successor542.592210 gaps and both deadlines
+remained unchanged. This is live storage acceptance, not a completed soak.
+
 An enabled observer, matched counters or a short successful sample is not a
 completed soak. The original elapsed run must still finish and pass its unchanged
 gap/progress rules. No unit tests, CI, dashboard, test mail or legacy access are
