@@ -6,7 +6,9 @@ import json
 import signal
 import sys
 import time
+from contextlib import contextmanager
 from datetime import timedelta
+from types import SimpleNamespace
 
 from psycopg import DatabaseError
 from psycopg.conninfo import conninfo_to_dict
@@ -56,6 +58,7 @@ def aggregate(connection, query, since, low, high, block):
 
 
 def bounded_progress(db, *, since):
+    db = getattr(db, 'progress_db', db)
     query, query_hash = partition_query(since)
     started = time.monotonic()
     with db.pool.connection() as connection, connection.transaction():
@@ -71,6 +74,25 @@ def bounded_progress(db, *, since):
                       'blocks': blocks, 'block_size': BLOCK, 'seconds': time.monotonic() - started,
                       'statement_timeout_changed': False}), flush=True)
     return result
+
+
+def sample_waiting_turn(db):
+    # Queue behind Steward's original bounded transaction, rather than repeatedly
+    # losing a SKIP LOCKED race. The original sampler reuses this owned connection.
+    with db.pool.connection() as connection, connection.transaction():
+        due = connection.execute(
+            "SELECT id FROM research_soaks WHERE id=ANY(%s) AND state='RUNNING' "
+            "AND next_sample<=now() ORDER BY started_at FOR UPDATE", (sorted(OWNED_SOAKS),)
+        ).fetchall()
+        if not due:
+            return 0
+
+        @contextmanager
+        def owned_connection():
+            yield connection
+
+        proxy = SimpleNamespace(pool=SimpleNamespace(connection=owned_connection), progress_db=db)
+        return training_observer.sample_due(proxy)
 
 
 def verify(db, since):
@@ -135,12 +157,15 @@ def main():
             active = db.rows("SELECT id FROM research_soaks WHERE state='RUNNING'")
             assert {r['id'] for r in active} <= OWNED_SOAKS
             try:
-                count = training_observer.sample_due(db)
+                count = sample_waiting_turn(db)
                 if count:
                     print(json.dumps({'samples_taken': count, 'at': time.time()}), flush=True)
             except (DatabaseError, PoolTimeout, TimeoutError) as exc:
                 print(json.dumps({'sample_failed': type(exc).__name__,
                                   'sqlstate': getattr(exc, 'sqlstate', None), 'at': time.time()}), flush=True)
+                if getattr(exc, 'sqlstate', None) == '55P03':
+                    time.sleep(1)
+                    continue
             if args.once:
                 run = db.rows('SELECT * FROM research_soaks WHERE id=%s', (args.soak,))[0]
                 break
