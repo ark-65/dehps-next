@@ -86,7 +86,7 @@ class Settings:
             raise ValueError("Expected1..20 isolated origin fitters")
         if result.origin_processes > 1 and result.training_threads not in (1, 2, 4, 8):
             raise ValueError("Parallel origin fitters require an audited thread count")
-        if result.inference_backend not in ("cpu", "vulkan"):
+        if result.inference_backend not in ("cpu", "vulkan", "sycl"):
             raise ValueError("Invalid local inference backend")
         if result.cpu_pool != "0-19" or set(os.sched_getaffinity(0)) != set(range(20)):
             raise ValueError("Next must run in the registered CPU0-19 pool; reserve20-21 for the host")
