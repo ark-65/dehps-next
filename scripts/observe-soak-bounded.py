@@ -6,6 +6,7 @@ import json
 import signal
 import sys
 import time
+from datetime import timedelta
 
 from psycopg import DatabaseError
 from psycopg.conninfo import conninfo_to_dict
@@ -19,6 +20,7 @@ from dehps_next.research_memory import progress_status
 
 BLOCK = 4096
 SUMS = ('committed_fresh_origins', 'committed_gradient_steps', 'reused_origins')
+OWNED_SOAKS = {'qwen-latency-stability-20261113', 'qwen-latency-stability-20261113-v2'}
 
 
 class Query:
@@ -103,7 +105,7 @@ def main():
     parser.add_argument('--once', action='store_true')
     args = parser.parse_args()
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-    assert args.soak == 'qwen-latency-stability-20261113'
+    assert args.soak in OWNED_SOAKS
     assert code_identity() == args.controller_source
     settings = Settings.from_env()
     assert conninfo_to_dict(settings.database_url)['dbname'] == 'dehps_next'
@@ -111,17 +113,27 @@ def main():
     try:
         run = db.rows('SELECT * FROM research_soaks WHERE id=%s', (args.soak,))[0]
         assert run['interval_seconds'] == 300
+        assert run['deadline'] - run['started_at'] == timedelta(hours=24)
         if args.verify:
             verify(db, run['started_at'])
             return
         training_observer.progress_status = bounded_progress
-        while run['state'] == 'RUNNING':
-            primary = db.rows("SELECT config->>'code_digest' AS source,"
-                              "config->>'numeric_digest' AS numeric FROM research_programs "
-                              "WHERE id='autonomous-v2'")[0]
-            assert primary == {'source': args.controller_source, 'numeric': numeric_identity()}
+        while True:
+            run = db.rows('SELECT * FROM research_soaks WHERE id=%s', (args.soak,))[0]
+            if run['state'] != 'RUNNING':
+                break
+            primary = db.rows("SELECT p.config->>'code_digest' AS program_source,"
+                              "r.config->>'code_digest' AS source,r.config->>'numeric_digest' AS numeric "
+                              "FROM research_programs p LEFT JOIN research_campaigns r ON r.id=p.current_campaign "
+                              "WHERE p.id='autonomous-v2'")[0]
+            assert primary['program_source'] == args.controller_source
+            if primary['source'] is None:
+                print(json.dumps({'waiting_current_campaign_epoch': True, 'at': time.time()}), flush=True)
+                time.sleep(10)
+                continue
+            assert primary['source'] == args.controller_source and primary['numeric'] == numeric_identity()
             active = db.rows("SELECT id FROM research_soaks WHERE state='RUNNING'")
-            assert {r['id'] for r in active} == {args.soak}
+            assert {r['id'] for r in active} <= OWNED_SOAKS
             try:
                 count = training_observer.sample_due(db)
                 if count:
@@ -130,9 +142,9 @@ def main():
                 print(json.dumps({'sample_failed': type(exc).__name__,
                                   'sqlstate': getattr(exc, 'sqlstate', None), 'at': time.time()}), flush=True)
             if args.once:
+                run = db.rows('SELECT * FROM research_soaks WHERE id=%s', (args.soak,))[0]
                 break
             time.sleep(10)
-            run = db.rows('SELECT * FROM research_soaks WHERE id=%s', (args.soak,))[0]
         print(json.dumps({'final_soak': run}, default=str), flush=True)
     finally:
         db.close()

@@ -38,6 +38,24 @@ Steward's ordinary sampling can coexist through the original locked-row/skip
 logic; only due actual samples are persisted. Private receipts record full query
 identity, snapshot sequence range, block count and real elapsed time.
 
+The first deployment's extra epoch check incorrectly read `numeric_digest` from
+the program configuration, where it is absent. The numerical contract belongs
+to the current frozen campaign. The corrected check reads both campaign source
+and numeric identity, checks the program controller source, and waits through a
+temporarily empty campaign boundary. An actual isolated CPU `--once` invocation
+then committed a real due sample:156 blocks in11.645 seconds, with the original
+statement timeout and sampler unchanged. Constructor-only verification is not
+treated as this live storage acceptance.
+
+The original run already recorded a944.539696-second gap from the SQL sampling
+failures. That exceeds600 and remains a failed coverage record; its clock and
+gap must not be reset. A separately named successor,
+`qwen-latency-stability-20261113-v2`, starts a new full24-hour observation after
+the repaired live acceptance. The observer may sample these two explicitly owned
+runs until their respective original deadlines. Do not merge their overlapping
+training counts or describe the failed run as passed. No successor pass is
+claimed before its own real elapsed evidence is complete.
+
 An enabled observer, matched counters or a short successful sample is not a
 completed soak. The original elapsed run must still finish and pass its unchanged
 gap/progress rules. No unit tests, CI, dashboard, test mail or legacy access are
