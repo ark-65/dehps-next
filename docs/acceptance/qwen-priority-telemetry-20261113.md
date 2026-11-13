@@ -51,3 +51,18 @@ Actual5-second host/Next PostgreSQL/Python3.12 acceptance:16 samples at primary
 generation6148; maximum capture0.389638s, start gap5.000137s and available snapshot
 age5.389729s. Main services remained running. Zero model requests; Ruff and diff
 checks passed. These short measurements do not prove a fault-free24h window.
+
+## Independent publisher lifetime
+
+An admission publisher must remain available when a finite observation ends
+while further frozen recovery work is still pending. `--keep-running` explicitly
+decouples its lifetime from the referenced soak; default termination is retained.
+This neither extends an observation clock nor changes any admission gate.
+
+Actual host/Next PostgreSQL/Python3.12 validation used the existing terminal
+`multiscale-probability-20261103` row and a retained actual mechanism result.
+Default mode exited after one snapshot; explicit keep-running published29 further
+snapshots while the source remained REVIEW_REQUIRED. Maximum capture10.835069s;
+maximum available age25.269917s, including service startup. Zero model requests or
+audit-created fits; Ruff/diff checks passed. This is publisher lifecycle evidence,
+not training continuity, model repair or24h acceptance.
