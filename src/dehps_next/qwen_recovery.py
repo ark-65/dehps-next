@@ -12,7 +12,12 @@ from .training_window import status
 STUDY = "qwen-output-recovery-20261112-v1"
 RECOVERABLE = ("LOCAL_MODEL_TRUNCATED", "LOCAL_MODEL_REPETITION",
                "INVALID_LOCAL_REPLY", "INVALID_COMPARATIVE_SELECTION")
+TRANSIENT_FAILURES = ("LOCAL_INFERENCE_UNAVAILABLE", "LOCAL_STREAM_INCOMPLETE", "LOCAL_STREAM_STALLED")
 COOLDOWN_SECONDS = 1800
+
+
+def certificate_id(profile):
+    return "qwen-output-recovery-" + digest([profile, identity()])[:24]
 
 
 def context_identity(context):
@@ -27,19 +32,19 @@ def context_identity(context):
 
 
 def certificate(db, profile):
+    scoped = certificate_id(profile)
     rows = db.rows("""SELECT s.protocol,s.sha256,r.payload FROM research_review_studies s
-        JOIN research_review_results r ON r.study_id=s.id WHERE s.id=%s""", (STUDY,))
-    if not rows:
-        return None
-    row = rows[0]
-    p, result = row["protocol"], row["payload"]
-    if (digest(p) != row["sha256"] or p.get("guard_identity") != identity()
-            or p.get("profile_id") != profile or not result.get("passed")
-            or result.get("protocol_sha256") != row["sha256"]
-            or result.get("previous_valid_rejected") != 0
-            or result.get("source_slots") != 144 or not result.get("original_failure_detected")):
-        return None
-    return row
+        JOIN research_review_results r ON r.study_id=s.id WHERE s.id IN (%s,%s)
+        ORDER BY CASE WHEN s.id=%s THEN 0 ELSE 1 END""", (scoped, STUDY, scoped))
+    for row in rows:
+        p, result = row["protocol"], row["payload"]
+        if (digest(p) == row["sha256"] and p.get("guard_identity") == identity()
+                and p.get("profile_id") == profile and result.get("passed")
+                and result.get("protocol_sha256") == row["sha256"]
+                and result.get("previous_valid_rejected") == 0
+                and result.get("source_slots") == 144 and result.get("original_failure_detected")):
+            return row
+    return None
 
 
 def arm(db, campaign, job, *, at=None):
@@ -97,13 +102,15 @@ def new_context_required(db, state, context):
 def recovered(c, campaign, profile, call, audit):
     # Called only after actual selection, strict parsing and feedback receipts pass.
     state = c.execute("SELECT * FROM qwen_selection_state WHERE id=1 FOR UPDATE").fetchone()
-    if state["profile_id"] != profile or state["reason"] not in RECOVERABLE:
+    clearable = (*RECOVERABLE, *TRANSIENT_FAILURES)
+    if state["profile_id"] != profile or state["reason"] not in clearable:
         return
-    actual = c.execute("""SELECT m.state,m.metrics,m.created_at,m.model_digest,
+    actual = c.execute("""SELECT m.state,m.stage,m.metrics,m.created_at,m.model_digest,
         a.source,a.payload,a.created_at AS audit_created_at FROM research_model_calls m
         JOIN qwen_selection_audits a ON a.call_id=m.id WHERE m.id=%s AND a.id=%s""",
         (call, audit)).fetchone()
     if (not actual or actual["state"] != "SUCCEEDED" or actual["source"] != "QWEN_COMPARATIVE"
+            or not actual["stage"].startswith("CANDIDATE_SELECTION_V4_")
             or actual["payload"].get("profile_id") != profile
             or digest(actual["metrics"].get("selection_profile")) != profile
             or state["retry_after"] is None or actual["created_at"] < state["retry_after"]
@@ -121,11 +128,12 @@ def recovered(c, campaign, profile, call, audit):
         raise DomainError("QWEN_RECOVERY_RECEIPT_REQUIRED", "Require the same-task successful thinking receipt")
     row = c.execute("""UPDATE qwen_selection_state SET reason=NULL,retry_after=NULL,updated_at=now()
         WHERE id=1 AND profile_id=%s AND reason=ANY(%s) RETURNING profile_id""",
-        (profile, list(RECOVERABLE))).fetchone()
+        (profile, list(clearable))).fetchone()
     if row:
         c.execute("INSERT INTO qwen_selection_audits(campaign_id,call_id,source,payload) VALUES(%s,%s,'QWEN_RECOVERY',%s)",
                   (campaign["id"], call, Jsonb({"phase": "RECOVERED_BY_ACTUAL_SELECTION",
-                   "profile_id": profile, "successful_audit": audit, "at": now().isoformat()})))
+                   "profile_id": profile, "previous_reason": state["reason"],
+                   "successful_audit": audit, "at": now().isoformat()})))
 
 
 def report_line(db):

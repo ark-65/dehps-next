@@ -11,8 +11,8 @@ from psycopg.types.json import Jsonb
 from dehps_next.config import Settings
 from dehps_next.db import Database
 from dehps_next.domain import digest
+from dehps_next.qwen_recovery import certificate_id
 from dehps_next.research_output_guard import VERSION, identity, repetition
-from dehps_next.qwen_recovery import STUDY
 from dehps_next.research_selection import mechanism_metrics
 from dehps_next.research_short_thinking import performance
 
@@ -78,12 +78,13 @@ def main():
         header, result = verify(db, args.failed_audit)
         if args.register:
             assert result["passed"]
+            study = certificate_id(header["profile_id"])
             with db.pool.connection() as c, c.transaction():
                 c.execute("INSERT INTO research_review_studies(id,protocol,sha256) VALUES(%s,%s,%s) ON CONFLICT DO NOTHING",
-                          (STUDY, Jsonb(header), digest(header)))
-                assert c.execute("SELECT sha256 FROM research_review_studies WHERE id=%s", (STUDY,)).fetchone()["sha256"] == digest(header)
-                c.execute("INSERT INTO research_review_results(study_id,payload) VALUES(%s,%s) ON CONFLICT DO NOTHING", (STUDY, Jsonb(result)))
-                assert c.execute("SELECT payload FROM research_review_results WHERE study_id=%s", (STUDY,)).fetchone()["payload"] == result
+                          (study, Jsonb(header), digest(header)))
+                assert c.execute("SELECT sha256 FROM research_review_studies WHERE id=%s", (study,)).fetchone()["sha256"] == digest(header)
+                c.execute("INSERT INTO research_review_results(study_id,payload) VALUES(%s,%s) ON CONFLICT DO NOTHING", (study, Jsonb(result)))
+                assert c.execute("SELECT payload FROM research_review_results WHERE study_id=%s", (study,)).fetchone()["payload"] == result
         print(json.dumps({"header": header, "result": result}))
     finally:
         db.close()
