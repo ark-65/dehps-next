@@ -30,6 +30,8 @@ def main():
     parser.add_argument('--receipt', required=True)
     parser.add_argument('--schedule-amendment', type=Path)
     parser.add_argument('--idle-admission', action='store_true')
+    parser.add_argument('--latency-revalidation', action='store_true')
+    parser.add_argument('--prepare-only', action='store_true')
     args = parser.parse_args()
     if not 1 <= len(args.corpus) <= 50:
         raise SystemExit('Use a bounded new corpus identity')
@@ -37,10 +39,9 @@ def main():
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
     s = Settings.from_env()
-    if (
-        conninfo_to_dict(s.database_url).get('dbname') != 'dehps_next_qwen4_grounded_acceptance'
-        or s.runtime.name != 'grounded-case'
-    ):
+    database, runtime = ('dehps_next_qwen_latency_20261113', 'qwen-latency-case') if args.latency_revalidation else (
+        'dehps_next_qwen4_grounded_acceptance', 'grounded-case')
+    if conninfo_to_dict(s.database_url).get('dbname') != database or s.runtime.name != runtime:
         raise SystemExit('Only the named isolated Next acceptance database/runtime is allowed')
     d = Database(s)
     d.migrate()
@@ -49,6 +50,28 @@ def main():
     inventory = request_json('/api/tags')['models']
     config = profile(next(r['digest'] for r in inventory if r['name'] == 'qwen3:4b'))
     header = m.prepare(d, a)
+    revalidation = None
+    if args.latency_revalidation:
+        if not args.idle_admission or args.schedule_amendment:
+            raise SystemExit('Revalidation retains idle admission and requires a fresh corpus')
+        revalidation = json.loads(Path('/operation/revalidation-source.json').read_text())
+        assert revalidation['profile'] == config
+        assert header['parent_spec'] == revalidation['header']['parent_spec']
+        assert header['parent_business'] == revalidation['header']['parent_business']
+        rows = d.rows('SELECT pair,basis FROM research_review_pairs WHERE study_id=%s ORDER BY pair', (args.corpus,))
+        assert len(rows) == 12
+        assert {str(r['pair']): digest(r['basis']) for r in rows} == revalidation['pair_hashes']
+        inputs = {}
+        for row in rows:
+            for variant in header['variants']:
+                for seed in header['seeds']:
+                    for arm in header['arms']:
+                        context = make_context(header['parent_spec'], header['parent_business'],
+                            row['basis']['offered'], row['basis']['memory'], count=1,
+                            feedback=arm == 'feedback', selector_contract=config['selector_contract'],
+                            **row['basis']['variants'][variant])[0]
+                        inputs[f"{row['pair']}:{arm}:{variant}:{seed}"] = digest(context)
+        assert len(inputs) == 144 and inputs == revalidation['input_hashes']
     prior_failure = d.rows('SELECT payload FROM research_review_results WHERE study_id=%s',
                            ('qwen-mechanism-ed39e4838f547bff',))[0]['payload']
     assert prior_failure['passed'] is False
@@ -75,6 +98,17 @@ def main():
         freeze['request_interval_seconds'] = None
         freeze['admission_policy'] = admission.POLICY
         freeze['drivers']['qwen-acceptance-admission.py'] = hashlib.sha256(Path(admission.__file__).read_bytes()).hexdigest()
+    if revalidation:
+        freeze['revalidation_source'] = {
+            'study': revalidation['study'], 'protocol_sha256': revalidation['protocol_sha256'],
+            'input_manifest_sha256': digest(revalidation['input_hashes']),
+            'same_144_inputs_seeds_and_gates': True, 'old_answers_reused': False,
+        }
+        freeze['primary_priority_admission'] = {
+            'fresh_snapshot_seconds_max': 30, 'minimum_primary_headroom_seconds': 900,
+            'active_primary_calls_max': 0, 'primary_paused_holds': True,
+            'overlap_invalidates_revalidation': True,
+        }
     with d.pool.connection() as c, c.transaction():
         if args.schedule_amendment:
             spec = importlib.util.spec_from_file_location('admission', Path(__file__).with_name('qwen-acceptance-admission.py'))
@@ -110,12 +144,21 @@ def main():
         node = c.execute('SELECT id FROM research_nodes WHERE campaign_id=%s', (m.CONTEXT,)).fetchone()
         assert not c.execute("SELECT 1 FROM jobs WHERE kind='RESEARCH_PLAN' AND state='RUNNING' AND lease_until>now()").fetchone()
         c.execute("UPDATE jobs SET state='SNAPSHOT_EXCLUDED' WHERE kind='RESEARCH_PLAN' AND state='READY' AND research_node_id!=%s", (node['id'],))
+    if args.prepare_only:
+        if not revalidation:
+            raise SystemExit('Prepare-only is reserved for the named revalidation')
+        print(json.dumps({'prepared': True, 'inputs_verified': len(inputs), 'freeze': freeze}), flush=True)
+        d.close()
+        return
     original = m.recoverable_review
 
     def fresh_review(db, artifacts, campaign, frozen, row, p, arm, variant, seed, **kw):
         expected, _, _, _, _ = make_context(frozen['parent_spec'], frozen['parent_business'],
             row['basis']['offered'], row['basis']['memory'], count=kw.get('count', 1),
             feedback=arm=='feedback', selector_contract=p['selector_contract'], **row['basis']['variants'][variant])
+        if revalidation:
+            key = f"{row['pair']}:{arm}:{variant}:{seed}"
+            assert digest(expected) == revalidation['input_hashes'][key]
         while True:
             if admission:
                 admission.wait(db, '/operation/admission.json', '/operation/admission-events.jsonl')
@@ -127,6 +170,21 @@ def main():
                     if delay > 0:
                         time.sleep(min(delay, 30))
                         continue
+            if revalidation:
+                try:
+                    snapshot = json.loads(Path('/operation/admission.json').read_text())
+                except (OSError, ValueError):
+                    snapshot = {}
+                ready = (
+                    0 <= time.time() - snapshot.get('observed_at', 0) <= 30
+                    and snapshot.get('primary_running')
+                    and not snapshot.get('primary_draw_paused', True)
+                    and snapshot.get('primary_active_calls', 1) == 0
+                    and snapshot.get('primary_next_call_headroom_seconds', 0) >= 900
+                )
+                if not ready:
+                    time.sleep(10)
+                    continue
             result = original(db, artifacts, campaign, frozen, row, p, arm, variant, seed, **kw)
             actual = db.rows("""SELECT * FROM research_model_calls WHERE campaign_id=%s
                 AND stage=%s ORDER BY id DESC LIMIT 1""",
@@ -174,9 +232,33 @@ def main():
         result = m.run_profile(d, a, header, config)
         measured = performance(d, result['study'], config)
         passed = bool(result['passed'] and measured['passed'])
+        overlap, observed = [], None
+        if revalidation:
+            actual = d.rows("""SELECT m.id,m.created_at,m.metrics FROM research_review_selections s
+                JOIN research_model_calls m ON m.id=(s.payload->'actual_call'->>'call_id')::bigint
+                WHERE s.study_id=%s""", (result['study'],))
+            end = max((r['created_at'].timestamp() + r['metrics'].get('wall_seconds', 0)
+                       for r in actual), default=0)
+            while True:
+                try:
+                    observed = json.loads(Path('/operation/primary-calls.json').read_text())
+                except (OSError, ValueError):
+                    observed = None
+                if observed and observed['observed_at'] >= end:
+                    break
+                time.sleep(10)
+            for primary in observed['calls']:
+                for call in actual:
+                    start = call['created_at'].timestamp()
+                    if primary['start'] < start + call['metrics'].get('wall_seconds', 0) and primary['end'] > start:
+                        overlap.append({'primary_call': primary['id'], 'acceptance_call': call['id']})
+            passed = bool(passed and not overlap and observed['complete'])
         qualification = {'kind': 'SHORT_QWEN4_QUALIFICATION_V1', 'passed': passed,
                          'mechanism_study': result['study'], 'measurement': measured,
                          'mechanism_passed': result['passed'], 'profile_id': digest(config)}
+        if revalidation:
+            qualification['primary_overlaps'] = overlap
+            qualification['primary_observations_complete'] = observed['complete']
         if amendment:
             qualification['scheduling_amendment'] = amendment['id']
         study = result['study']+'-short-qualification'
