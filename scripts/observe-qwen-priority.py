@@ -114,6 +114,7 @@ def main():
     parser.add_argument("--operation", required=True, type=Path)
     parser.add_argument("--soak", required=True)
     parser.add_argument("--interval", type=int, choices=(5, 10), default=10)
+    parser.add_argument("--keep-running", action="store_true")
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
     op = args.operation.resolve()
@@ -139,7 +140,8 @@ def main():
                 if args.once:
                     print(json.dumps(sample))
                     return
-                if sample["soak"]["state"] != "RUNNING" and (op / "mechanism-result.json").exists():
+                if (not args.keep_running and sample["soak"]["state"] != "RUNNING"
+                        and (op / "mechanism-result.json").exists()):
                     return
             except Exception as exc:
                 print(json.dumps({"at": time.time(), "observer_error": type(exc).__name__,
