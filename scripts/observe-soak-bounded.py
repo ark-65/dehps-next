@@ -12,7 +12,7 @@ from psycopg_pool import PoolTimeout
 from dehps_next import training_observer
 from dehps_next.config import Settings
 from dehps_next.db import Database
-from dehps_next.release import code_identity
+from dehps_next.release import code_identity, numeric_identity
 from dehps_next.research_memory import progress_status
 
 BLOCK = 4096
@@ -98,6 +98,7 @@ def main():
     parser.add_argument('--soak', required=True)
     parser.add_argument('--controller-source', required=True)
     parser.add_argument('--verify', action='store_true')
+    parser.add_argument('--once', action='store_true')
     args = parser.parse_args()
     assert args.soak == 'qwen-latency-stability-20261113'
     assert code_identity() == args.controller_source
@@ -112,6 +113,10 @@ def main():
             return
         training_observer.progress_status = bounded_progress
         while run['state'] == 'RUNNING':
+            primary = db.rows("SELECT config->>'code_digest' AS source,"
+                              "config->>'numeric_digest' AS numeric FROM research_programs "
+                              "WHERE id='autonomous-v2'")[0]
+            assert primary == {'source': args.controller_source, 'numeric': numeric_identity()}
             active = db.rows("SELECT id FROM research_soaks WHERE state='RUNNING'")
             assert {r['id'] for r in active} == {args.soak}
             try:
@@ -121,6 +126,8 @@ def main():
             except (DatabaseError, PoolTimeout, TimeoutError) as exc:
                 print(json.dumps({'sample_failed': type(exc).__name__,
                                   'sqlstate': getattr(exc, 'sqlstate', None), 'at': time.time()}), flush=True)
+            if args.once:
+                break
             time.sleep(10)
             run = db.rows('SELECT * FROM research_soaks WHERE id=%s', (args.soak,))[0]
         print(json.dumps({'final_soak': run}, default=str), flush=True)
