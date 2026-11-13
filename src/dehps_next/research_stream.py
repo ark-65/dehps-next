@@ -1,5 +1,6 @@
 """Local NDJSON inference with observable progress, rather than a total request deadline."""
 
+import hashlib
 import http.client
 import json
 import time
@@ -8,6 +9,13 @@ import urllib.request
 
 from .domain import canonical
 from .errors import DomainError
+
+
+def provider_error_code(error):
+    # This is a provider-observed generation failure, not an unperformed slot.
+    if error == "prediction aborted, token repeat limit reached":
+        return "LOCAL_MODEL_REPETITION"
+    return "LOCAL_INFERENCE_UNAVAILABLE"
 
 
 def chat(payload, progress, pulse, job, *, silence_seconds=180, path="/api/chat", raw=False):
@@ -20,6 +28,7 @@ def chat(payload, progress, pulse, job, *, silence_seconds=180, path="/api/chat"
     )
     content, thinking = [], []
     chunks, total_bytes, saved_at = 0, 0, time.monotonic()
+    provider_failure = {}
     pulsed_at = saved_at - 1
     job["local_stream_active"] = True
     job["local_stream_progress_at"] = saved_at
@@ -32,6 +41,7 @@ def chat(payload, progress, pulse, job, *, silence_seconds=180, path="/api/chat"
                 "stream_chunks_observed": chunks,
                 "stream_bytes_observed": total_bytes,
                 "count_scope": "PROVIDER_COUNTS_PENDING;CHUNKS_ARE_NOT_TOKENS",
+                **provider_failure,
             }
         )
 
@@ -49,8 +59,13 @@ def chat(payload, progress, pulse, job, *, silence_seconds=180, path="/api/chat"
                     )
                 frame = json.loads(line)
                 if frame.get("error"):
+                    code = provider_error_code(frame["error"])
+                    provider_failure = {
+                        "provider_error_code": code,
+                        "provider_error_frame_sha256": hashlib.sha256(canonical(frame).encode()).hexdigest(),
+                    }
                     raise DomainError(
-                        "LOCAL_INFERENCE_UNAVAILABLE", "Local streaming provider reported an error"
+                        code, "Local streaming provider reported an error"
                     )
                 message = frame if raw else frame.get("message", {})
                 delta = message.get("response" if raw else "content", "")
