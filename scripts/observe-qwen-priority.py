@@ -3,9 +3,12 @@
 import argparse
 import fcntl
 import hashlib
+import http.client
 import json
 import re
 import subprocess
+import socket
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -33,6 +36,85 @@ def run(args, *, timeout=12, **kwargs):
                           timeout=timeout, **kwargs).stdout.strip()
 
 
+class LocalDocker(http.client.HTTPConnection):
+    def __init__(self, deadline):
+        super().__init__("localhost")
+        self.deadline = deadline
+
+    def connect(self):
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("Original metadata deadline expired")
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.settimeout(remaining)
+        self.sock.connect("/var/run/docker.sock")
+
+
+def docker_request(method, path, payload, deadline):
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("Original metadata deadline expired")
+    connection = LocalDocker(deadline)
+    def expire():
+        if connection.sock is not None:
+            try:
+                connection.sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+    timer = threading.Timer(remaining, expire)
+    timer.daemon = True
+    timer.start()
+    try:
+        connection.request(method, path, json.dumps(payload) if payload is not None else None,
+                           {"Content-Type": "application/json"})
+        response = connection.getresponse()
+        raw = response.read(256 * 1024 + 1)
+        if time.monotonic() >= deadline:
+            raise TimeoutError("Original metadata deadline expired")
+        if len(raw) > 256 * 1024 or not 200 <= response.status < 300:
+            raise RuntimeError("Missing bounded owned Docker metadata")
+        return raw
+    finally:
+        timer.cancel()
+        connection.close()
+
+
+def docker_exec(container, argv, *, env=(), timeout=12):
+    assert container in (*PRIMARY, "dehps-next-p0p1-database-1")
+    deadline = time.monotonic() + timeout
+    created = json.loads(docker_request("POST", "/containers/" + container + "/exec",
+        {"AttachStdout": True, "AttachStderr": True, "Tty": False,
+         "Cmd": argv, "Env": list(env)}, deadline))
+    ident = created["Id"]
+    if not re.fullmatch(r"[0-9a-f]{64}", ident):
+        raise RuntimeError("Missing owned exec identity")
+    stream = docker_request("POST", "/exec/" + ident + "/start",
+                            {"Detach": False, "Tty": False}, deadline)
+    output, errors, offset = [], [], 0
+    while offset < len(stream):
+        header = stream[offset:offset + 8]
+        if len(header) != 8 or header[0] not in (1, 2) or header[1:4] != b"\0\0\0":
+            raise RuntimeError("Incomplete Docker exec output frame")
+        length = int.from_bytes(header[4:8], "big")
+        end = offset + 8 + length
+        if end > len(stream):
+            raise RuntimeError("Incomplete Docker exec output frame")
+        (output if header[0] == 1 else errors).append(stream[offset + 8:end])
+        offset = end
+    final = json.loads(docker_request("GET", "/exec/" + ident + "/json", None, deadline))
+    while final["Running"]:
+        if time.monotonic() >= deadline:
+            raise TimeoutError("Original metadata deadline expired")
+        time.sleep(min(0.01, max(0, deadline - time.monotonic())))
+        final = json.loads(docker_request("GET", "/exec/" + ident + "/json", None, deadline))
+    if final["ExitCode"] != 0:
+        raise RuntimeError("Owned read-only metadata command did not complete")
+    # Stderr is retained only as a failure signal, never printed with connection details.
+    if errors and not output:
+        raise RuntimeError("Owned read-only metadata command produced no result")
+    return b"".join(output).decode("utf-8").strip()
+
+
 def host():
     memory = Path("/proc/meminfo").read_text()
     pressure = Path("/proc/pressure/memory").read_text()
@@ -49,8 +131,10 @@ def host():
 
 
 def running():
-    return run(["docker", "inspect", "--format", "{{.State.Running}}", *PRIMARY], timeout=8
-               ).splitlines() == ["true"] * len(PRIMARY)
+    deadline = time.monotonic() + 8
+    states = [json.loads(docker_request("GET", "/containers/" + name + "/json", None,
+                                       deadline))["State"]["Running"] for name in PRIMARY]
+    return states == [True] * len(PRIMARY)
 
 
 def database(soak):
@@ -70,15 +154,14 @@ def database(soak):
         FROM research_programs WHERE id='autonomous-v2'),
       'soak',(SELECT to_jsonb(s) FROM research_soaks s WHERE id='__SOAK__'))
       FROM qwen_selection_state WHERE id=1""".replace("__SOAK__", soak)
-    return json.loads(run(["docker", "exec", "-e",
-                           "PGOPTIONS=-c default_transaction_read_only=on -c statement_timeout=8000",
-                           "dehps-next-p0p1-database-1", "psql", "-X", "-At", "-U", "dehps_next",
-                           "-d", "dehps_next", "-v", "ON_ERROR_STOP=1", "-c", query]))
+    return json.loads(docker_exec("dehps-next-p0p1-database-1",
+        ["psql", "-X", "-At", "-U", "dehps_next", "-d", "dehps_next",
+         "-v", "ON_ERROR_STOP=1", "-c", query],
+        env=["PGOPTIONS=-c default_transaction_read_only=on -c statement_timeout=8000"]))
 
 
 def window():
-    return json.loads(run(["docker", "exec", "-i", "dehps-next-p0p1-worker-1", "python", "-"],
-                          input=WINDOW))
+    return json.loads(docker_exec("dehps-next-p0p1-worker-1", ["python", "-c", WINDOW]))
 
 
 def observe(pool, soak):
@@ -90,7 +173,7 @@ def observe(pool, soak):
     for name, future in futures.items():
         try:
             values[name] = future.result()
-        except (OSError, subprocess.SubprocessError, ValueError, TypeError, KeyError) as exc:
+        except (OSError, http.client.HTTPException, subprocess.SubprocessError, RuntimeError, ValueError, TypeError, KeyError) as exc:
             errors.append({"component": name, "error": type(exc).__name__})
     if errors:
         raise RuntimeError(json.dumps(errors))
@@ -113,7 +196,8 @@ def observe(pool, soak):
             "primary_cooldown_not_before": db["primary_cooldown_not_before"],
             "primary_active_calls": db["primary_active_calls"], "primary_draw_paused": draw["paused"],
             "window": draw, "program": db["program"], "soak": db["soak"],
-            "observer": "QWEN_PRIORITY_READ_ONLY_V3", "reporting_in_critical_path": False}
+            "observer": "QWEN_PRIORITY_READ_ONLY_V4", "reporting_in_critical_path": False,
+            "metadata_transport": "LOCAL_DOCKER_UNIX_API;ORIGINAL_8_12_SECOND_DEADLINES"}
 
 
 def main():
