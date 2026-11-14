@@ -169,16 +169,19 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse, *, profil
     started = time.monotonic()
     metrics = None
     from .local_usage import record
+    from .research_receipts import ReceiptMetrics
+
+    receipt_metrics = ReceiptMetrics(artifacts)
 
     def stream_progress(value):
         nonlocal metrics
-        metrics = {
+        metrics = receipt_metrics({
             **value,
             "selection_profile": profile,
             "wall_seconds": round(time.monotonic() - started, 4),
             "context_capacity": payload["options"]["num_ctx"],
             "stream_lock_retries": job.get("local_stream_lock_retries", 0),
-        }
+        })
         # Partial provider output is durable evidence, not a completed token receipt.
         with db.pool.connection() as c:
             c.execute("UPDATE research_model_calls SET metrics=%s WHERE id=%s", (Jsonb(metrics), call))
@@ -204,7 +207,7 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse, *, profil
 
             response = generate(
                 db, artifacts, campaign, job, call, payload, request_ref,
-                stream_progress, stream_pulse, profile,
+                stream_progress, stream_pulse, profile, receipt_metrics=receipt_metrics,
             )
         elif payload["stream"]:
             from .research_stream import chat
@@ -233,6 +236,7 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse, *, profil
             metrics["raw_completion"] = response.get("message", {}).get("content", "")
             if not response.get("short_metadata"):
                 metrics["raw_thinking"] = response.get("message", {}).get("thinking", "")
+        metrics = receipt_metrics(metrics)
         # Token receipts describe real local generation even if the worker lease, JSON or candidate validation fails.
         with db.pool.connection() as c, c.transaction():
             c.execute("UPDATE research_model_calls SET metrics=%s WHERE id=%s", (Jsonb(metrics), call))
@@ -267,13 +271,15 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse, *, profil
             c.execute("UPDATE research_model_calls SET metrics=%s WHERE id=%s", (Jsonb(metrics), call))
         pulse()
         content = response.get("message", {}).get("content", "")
+        from .research_output_guard import check, unsafe_text
+
+        if unsafe_text(content):
+            check(content)
         response_ref = artifacts.write(
             canonical({"content": content}).encode(), category="research/inference"
         )
         with db.pool.connection() as c:
             c.execute("UPDATE research_model_calls SET response=%s WHERE id=%s", (Jsonb(response_ref), call))
-        from .research_output_guard import check
-
         check(content)
         if not response.get("done") or response.get("done_reason") == "length":
             raise DomainError(
@@ -291,6 +297,9 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse, *, profil
             parsed = json.loads(content, object_pairs_hook=distinct_object)
         else:
             parsed = json.loads(content)
+        from .research_output_guard import check_json_text
+
+        check_json_text(parsed)
         with db.pool.connection() as c, c.transaction():
             db.fence(c, job)
             c.execute("UPDATE research_model_calls SET state='SUCCEEDED' WHERE id=%s", (call,))
@@ -303,11 +312,11 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse, *, profil
     except Exception as exc:
         with db.pool.connection() as c, c.transaction():
             saved = c.execute("SELECT metrics FROM research_model_calls WHERE id=%s FOR UPDATE", (call,)).fetchone()
-            failure = {
+            failure = receipt_metrics.failure({
                 **(saved["metrics"] or {}), **(metrics or {}),
                 "failure_code": getattr(exc, "code", type(exc).__name__),
                 "wall_seconds": round(time.monotonic() - started, 4),
-            }
+            })
             c.execute(
                 "UPDATE research_model_calls SET state='FAILED',metrics=%s WHERE id=%s",
                 (Jsonb(failure), call),

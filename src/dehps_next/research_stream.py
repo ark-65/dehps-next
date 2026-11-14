@@ -74,8 +74,26 @@ def chat(payload, progress, pulse, job, *, silence_seconds=180, path="/api/chat"
                     raise DomainError("INVALID_LOCAL_REPLY", "Streaming message fields must be text")
                 content.append(delta)
                 thinking.append(thought)
-                total_bytes += len(delta.encode()) + len(thought.encode())
                 chunks += 1
+                from .research_output_guard import check, unsafe_text
+
+                if unsafe_text(delta) or unsafe_text(thought):
+                    provider_failure = {
+                        "rejected_frame_sha256": hashlib.sha256(line).hexdigest(),
+                        "rejected_frame_bytes": len(line),
+                        "rejected_frame_raw": line,
+                        "count_scope": "PRIOR_VALID_UTF8_TEXT_BYTES_ONLY;UNSAFE_FRAME_NOT_COUNTED_AS_TOKENS",
+                    }
+                    if frame.get("done"):
+                        provider_failure.update({key: frame.get(key) for key in (
+                            "total_duration", "load_duration", "prompt_eval_count", "eval_count",
+                            "eval_duration", "done_reason",
+                        )})
+                    # The callbacks persist the original text as opaque evidence;
+                    # reject it before either JSONB or UTF-8 encoding can lose it.
+                    save()
+                    check(delta if unsafe_text(delta) else thought)
+                total_bytes += len(delta.encode()) + len(thought.encode())
                 if total_bytes > 2 * 1024**2:
                     raise DomainError("LOCAL_INFERENCE_RESPONSE_LIMIT", "Preserve bounded local artifacts")
                 if delta or thought:
@@ -88,8 +106,6 @@ def chat(payload, progress, pulse, job, *, silence_seconds=180, path="/api/chat"
                     saved_at = time.monotonic()
                 # Reject a demonstrated generation loop, never a long coherent thought.
                 tail = "".join(thinking if thought else content)[-2048:]
-                from .research_output_guard import check
-
                 if not frame.get("done"):
                     check(tail)
                 if len(tail) == 2048 and tail[-256:] * 8 == tail:
