@@ -1,0 +1,15 @@
+--- a/ggml/src/ggml-sycl/mmvq.cpp
++++ b/ggml/src/ggml-sycl/mmvq.cpp
+@@ -5,6 +5,12 @@
+ #include "element_wise.hpp"
+ #include "quants.hpp"
+ #include "vecdotq.hpp"
++
++// An AOT target explicitly marked without XMX must not emit the unused
++// ESIMD DPAS kernels: MTL/XeLPG cannot compile those instructions.
++#if defined(GGML_SYCL_XMX_AOT_SG) && GGML_SYCL_XMX_AOT_SG == 0
++#    undef GGML_SYCL_MMVQ_HAS_XMX
++#endif
+ 
+ #ifdef GGML_SYCL_MMVQ_HAS_XMX
+ #    include "esimd.hpp"
