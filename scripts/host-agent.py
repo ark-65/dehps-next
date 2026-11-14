@@ -2,14 +2,15 @@
 
 import argparse
 import http.client
+import importlib.util
 import json
 import logging
 import os
 import socket
-import subprocess
 import threading
 import time
 from datetime import UTC, datetime
+from functools import cache
 from pathlib import Path
 from shutil import disk_usage
 
@@ -157,7 +158,59 @@ def size(path, allow_links=False):
     return total
 
 
-def sample():
+class SampleTiming:
+    """Coarse real I/O boundaries only; never trace individual file operations."""
+
+    def __init__(self):
+        self.started = time.monotonic()
+        self.stages = []
+
+    def call(self, name, function, *args, **kwargs):
+        started, thread_cpu, process_cpu = time.monotonic(), time.thread_time(), time.process_time()
+        stage = {"name": name}
+        try:
+            return function(*args, **kwargs)
+        except Exception as exc:
+            stage["error"] = type(exc).__name__
+            raise
+        finally:
+            stage.update(
+                seconds=time.monotonic() - started,
+                thread_cpu_seconds=time.thread_time() - thread_cpu,
+                process_cpu_seconds=time.process_time() - process_cpu,
+            )
+            self.stages.append(stage)
+
+    def summary(self):
+        return {"seconds": time.monotonic() - self.started, "stages": self.stages,
+                "scope": "COARSE_BOUNDARIES;PROCESS_CPU_INCLUDES_OTHER_THREADS;NO_PER_FILE_PROFILER"}
+
+
+@cache
+def native_metadata_exec():
+    # Reuse the existing bounded, framed, exit-checked Next-only Unix transport.
+    spec = importlib.util.spec_from_file_location(
+        "next_host_metadata", ROOT / "scripts/observe-qwen-priority.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.docker_exec
+
+
+def postgresql_volume_size():
+    deadline = time.monotonic() + 15
+    execute = native_metadata_exec()
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("PostgreSQL inventory deadline expired")
+    output = execute(NAMES[0], ["du", "-sb", "/var/lib/postgresql/data"], timeout=remaining)
+    if time.monotonic() >= deadline:
+        raise TimeoutError("PostgreSQL inventory deadline expired")
+    return int(output.split()[0])
+
+
+def sample(timing=None):
+    timing = timing or SampleTiming()
     observed_at = datetime.now(UTC)
     if ROOT.name != "dehps-next" or not (ROOT / "AGENT.md").is_file():
         raise RuntimeError("Refusing telemetry outside the named Next repository")
@@ -168,13 +221,13 @@ def sample():
     disk = disk_usage(ROOT)
     containers = {}
     for name in NAMES:
-        info = get(f"/containers/{name}/json")
+        info = timing.call("identity:" + name, get, f"/containers/{name}/json")
         if (
             info["Name"] != "/" + name
             or info["Config"].get("Labels", {}).get("com.docker.compose.project") != "dehps-next-p0p1"
         ):
             raise RuntimeError("Container ownership mismatch")
-        stats = get(f"/containers/{name}/stats?stream=false&one-shot=true")
+        stats = timing.call("stats:" + name, get, f"/containers/{name}/stats?stream=false&one-shot=true")
         containers[name] = {
             "cpu_ns": stats.get("cpu_stats", {}).get("cpu_usage", {}).get("total_usage", 0),
             "memory": stats.get("memory_stats", {}).get("usage", 0),
@@ -182,7 +235,7 @@ def sample():
             "oom_killed": info["State"].get("OOMKilled", False),
             "writable_accounting": "INCLUDED_IN_DOCKER_DEVICE_UPPER_BOUND",
         }
-    development = get("/containers/dehps-next-dev/json", optional=True)
+    development = timing.call("identity:dehps-next-dev", get, "/containers/dehps-next-dev/json", optional=True)
     if development:
         if not any(
             m.get("Source") == str(ROOT) and m.get("Destination") == "/app" for m in development["Mounts"]
@@ -201,37 +254,34 @@ def sample():
         raise RuntimeError("Verify Docker storage accounting on the separately mounted device")
     shared_cache = disk.total
     # Only the Next PostgreSQL volume, measured inside its own named container.
-    pg = int(
-        subprocess.check_output(
-            ["docker", "exec", NAMES[0], "du", "-sb", "/var/lib/postgresql/data"], text=True, timeout=15
-        ).split()[0]
-    )
+    pg = timing.call("postgresql_volume", postgresql_volume_size)
     runtime = ROOT / "runtime"
     categories = {
-        "application": size(runtime / "application"),
-        "inference": size(runtime / "inference"),
+        "application": timing.call("owned_application", size, runtime / "application"),
+        "inference": timing.call("owned_inference", size, runtime / "inference"),
         "database": pg,
         # A physical upper bound includes all Next images and writable layers,
         # even when Docker's image inventory hangs or a new build is registered.
         "environment": disk.total,
-        "backups": size(runtime / "backups"),
-        "staging": sum(
+        "backups": timing.call("owned_backups", size, runtime / "backups"),
+        "staging": timing.call("owned_staging", lambda: sum(
             size(p)
             for p in runtime.iterdir()
             if p.is_dir() and p.name not in ("application", "inference", "backups")
-        ),
+        )),
         "logs": len(NAMES) * 15 * 1024**2,
     }
-    repo = sum(
+    repo = timing.call("owned_repository", lambda: sum(
         size(p, allow_links=True) if p.is_dir() else p.lstat().st_size
         for p in ROOT.iterdir()
         if p.name != "runtime"
-    )
+    ))
     other = sum(p.stat().st_size for p in runtime.iterdir() if p.is_file() and not p.is_symlink())
     return {
         "owner": "dehps-next",
         "at": observed_at.isoformat(),
         "sample_completed_at": datetime.now(UTC).isoformat(),
+        "sampling": timing.summary(),
         "complete": True,
         "disk_total": disk.total,
         "disk_free": disk.free,
@@ -262,8 +312,9 @@ def main():
     target.parent.mkdir(parents=True, exist_ok=True)
     retirement = ImageRetirement()
     while True:
+        timing = SampleTiming()
         try:
-            value = sample()
+            value = sample(timing)
         except Exception as exc:
             logging.getLogger("dehps_next_host").exception("Next telemetry failed")
             value = {
@@ -271,6 +322,7 @@ def main():
                 "at": datetime.now(UTC).isoformat(),
                 "complete": False,
                 "error": type(exc).__name__,
+                "sampling": timing.summary(),
             }
         else:
             value["image_gc"] = {"state": "NOT_RUN_ONE_SHOT"} if args.once else retirement.observe()
