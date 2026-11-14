@@ -1,0 +1,85 @@
+--- a/ggml/src/ggml-sycl/mem.cpp
++++ b/ggml/src/ggml-sycl/mem.cpp
+@@ -7,6 +7,14 @@
+ #endif
+ 
+ #include <cstdint>
++#include <cstdio>
++#include <algorithm>
++#include <charconv>
++#include <cstdlib>
++#include <fstream>
++#include <limits>
++#include <sstream>
++#include <string>
+ #include <iostream>
+ #include <vector>
+ 
+@@ -119,7 +127,67 @@
+     return false;
+ }
+ 
++
++// Explicit UMA accounting uses actual reclaimable OS memory and the existing
++// hard container budget. Unknown/unbounded observations fail closed.
++static bool query_uma_available_memory(sycl::device dev, size_t & free_bytes, size_t & total_bytes) {
++    if (!dev.is_gpu() || !dev.get_info<sycl::info::device::host_unified_memory>()) {
++        std::fprintf(stderr, "[SYCL] UMA accounting requires an actual unified-memory GPU\n");
++        return false;
++    }
++    auto bounded_integer = [](const char * path, size_t & value) {
++        std::ifstream in(path);
++        std::string raw, extra;
++        if (!(in >> raw) || (in >> extra) || raw.empty() ||
++            raw.find_first_not_of("0123456789") != std::string::npos) {
++            return false;
++        }
++        auto result = std::from_chars(raw.data(), raw.data() + raw.size(), value);
++        return result.ec == std::errc() && result.ptr == raw.data() + raw.size();
++    };
++    size_t limit = 0, current = 0;
++    if (!bounded_integer("/sys/fs/cgroup/memory.max", limit) || limit == 0 ||
++        !bounded_integer("/sys/fs/cgroup/memory.current", current)) {
++        std::fprintf(stderr, "[SYCL] Missing finite cgroup memory observation; refuse UMA budget\n");
++        return false;
++    }
++    std::ifstream info("/proc/meminfo");
++    std::string line;
++    size_t available = 0, physical = 0;
++    while (std::getline(info, line)) {
++        std::istringstream fields(line);
++        std::string key, unit;
++        size_t kib = 0;
++        if (!(fields >> key >> kib >> unit) || unit != "kB" ||
++            kib > std::numeric_limits<size_t>::max() / 1024) {
++            continue;
++        }
++        if (key == "MemAvailable:") available = kib * 1024;
++        if (key == "MemTotal:") physical = kib * 1024;
++    }
++    if (!info.eof() || !available || !physical || available > physical || limit > physical) {
++        std::fprintf(stderr, "[SYCL] Missing/inconsistent MemAvailable; refuse UMA budget\n");
++        return false;
++    }
++    size_t device_total = dev.get_info<sycl::info::device::global_mem_size>();
++    if (!device_total) return false;
++    size_t remaining = current < limit ? limit - current : 0;
++    total_bytes = std::min(device_total, limit);
++    free_bytes = std::min(std::min(available, remaining), total_bytes);
++    std::fprintf(stderr, "[SYCL] UMA physical budget: MemAvailable=%zu cgroup.max=%zu cgroup.current=%zu device.total=%zu effective.free=%zu effective.total=%zu\n",
++                  available, limit, current, device_total, free_bytes, total_bytes);
++    return true;
++}
++
+ bool get_memory_size(sycl::device dev, size_t & free_bytes, size_t & total_bytes, MemoryAPIType api_type) {
++    if (const char * uma = std::getenv("GGML_SYCL_UMA_AVAILABLE_MEMORY")) {
++        if (std::string(uma) == "1") return query_uma_available_memory(dev, free_bytes, total_bytes);
++        if (std::string(uma) != "0") {
++            std::fprintf(stderr, "[SYCL] Invalid explicit UMA accounting setting\n");
++            return false;
++        }
++    }
++
+ 
+     GGML_SYCL_DEBUG("[%s]GPU Name:          %s\n", __func__,
+         dev.get_info<sycl::info::device::name>().c_str());
