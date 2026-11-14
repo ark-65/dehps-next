@@ -86,9 +86,14 @@ def offload(profile):
     return result
 
 
-def generate(db, artifacts, campaign, job, call, payload, logical_request, progress, pulse, profile):
+def generate(db, artifacts, campaign, job, call, payload, logical_request, progress, pulse, profile,
+             *, receipt_metrics=None):
     from .local_usage import record
     from .research_stream import chat
+    from .research_receipts import ReceiptMetrics
+
+    if receipt_metrics is None:
+        receipt_metrics = ReceiptMetrics(artifacts)
 
     validate_profile(profile)
     prefix = render(payload["messages"])
@@ -111,10 +116,10 @@ def generate(db, artifacts, campaign, job, call, payload, logical_request, progr
 
     def thinking_progress(value):
         nonlocal partial
-        partial = {
+        partial = receipt_metrics({
             **value, "phase": "THINKING_PREFIX", "selection_profile": profile,
             "wall_seconds": round(time.monotonic() - started, 4),
-        }
+        })
         with db.pool.connection() as c:
             c.execute("UPDATE research_model_calls SET metrics=%s WHERE id=%s", (Jsonb(partial), child))
         progress({"thinking_call_id": child, "logical_request": logical_request,
@@ -132,6 +137,7 @@ def generate(db, artifacts, campaign, job, call, payload, logical_request, progr
             wall_seconds=round(time.monotonic() - started, 4),
             count_scope="ACTUAL_PROVIDER_COUNTS;PREFIX_ONLY_NOT_A_SEMANTIC_SELECTION",
         )
+        metrics = receipt_metrics(metrics)
         # A later GPU/lease rejection must not erase an already returned token receipt.
         with db.pool.connection() as c, c.transaction():
             c.execute("UPDATE research_model_calls SET metrics=%s WHERE id=%s", (Jsonb(metrics), child))
@@ -152,9 +158,11 @@ def generate(db, artifacts, campaign, job, call, payload, logical_request, progr
         ):
             raise DomainError("SHORT_PROVIDER_RECEIPT", "Missing or excessive actual thinking token receipt")
     except Exception as exc:
-        failure = {**(metrics or partial), "failure_code": getattr(exc, "code", type(exc).__name__)}
+        failure = receipt_metrics.failure({
+            **(metrics or partial), "failure_code": getattr(exc, "code", type(exc).__name__),
+        })
         with db.pool.connection() as c, c.transaction():
-            c.execute("UPDATE research_model_calls SET metrics=metrics||%s,state='FAILED' WHERE id=%s",
+            c.execute("UPDATE research_model_calls SET metrics=coalesce(metrics,'{}'::jsonb)||%s,state='FAILED' WHERE id=%s",
                       (Jsonb(failure), child))
             current = c.execute("SELECT metrics FROM research_model_calls WHERE id=%s", (child,)).fetchone()
             record(c, child, current["metrics"])

@@ -6,14 +6,14 @@ from pathlib import Path
 
 from .errors import DomainError
 
-VERSION = "short-output-loop-guard-v2"
+VERSION = "short-output-loop-guard-v3"
 
 
 def identity():
     root = Path(__file__).parent
     h = hashlib.sha256()
     for name in ("research_output_guard.py", "research_stream.py", "research_short_thinking.py",
-                 "research_agent.py", "qwen_recovery.py", "research_selection.py"):
+                 "research_agent.py", "qwen_recovery.py", "research_selection.py", "research_receipts.py"):
         h.update(name.encode())
         h.update((root / name).read_bytes())
     return h.hexdigest()
@@ -50,7 +50,27 @@ def repetition(text):
     return None
 
 
+def unsafe_text(text):
+    return "\x00" in text or re.search(r"[\ud800-\udfff]", text) is not None
+
+
+def check_json_text(value):
+    # An escaped JSON string can acquire NUL/surrogates only after parsing.
+    # Reject that value before marking the call successful or writing an audit.
+    if isinstance(value, str) and unsafe_text(value):
+        raise DomainError("INVALID_LOCAL_REPLY", "Parsed provider text cannot be represented in JSONB")
+    if isinstance(value, dict):
+        for key, item in value.items():
+            check_json_text(key)
+            check_json_text(item)
+    elif isinstance(value, list):
+        for item in value:
+            check_json_text(item)
+
+
 def check(text):
+    if unsafe_text(text):
+        raise DomainError("INVALID_LOCAL_REPLY", "Provider text contains NUL or an isolated surrogate")
     evidence = repetition(text)
     if evidence:
         raise DomainError("LOCAL_MODEL_REPETITION", "Short output contains a demonstrated generation loop")

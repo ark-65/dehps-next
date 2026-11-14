@@ -165,7 +165,9 @@ class Lifecycle:
         }
         for row in c.execute("SELECT * FROM research_policy_versions"):
             add(row["artifact"], row["id"] in newest_policies or row["campaign_id"] in keep_artifacts)
-        for row in c.execute("SELECT campaign_id,request,response FROM research_model_calls"):
+        for row in c.execute("""SELECT campaign_id,request,response,
+            jsonb_path_query_array(metrics,%s::jsonpath) AS metric_refs FROM research_model_calls""",
+            (REFERENCE_PATH,)):
             add(row, row["campaign_id"] in keep_artifacts)
         for row in c.execute("SELECT artifact FROM research_score_cache"):
             add(row["artifact"], True)
