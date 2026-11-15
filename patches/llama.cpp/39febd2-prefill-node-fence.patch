@@ -1,0 +1,57 @@
+--- a/ggml/src/ggml-sycl/ggml-sycl.cpp
++++ b/ggml/src/ggml-sycl/ggml-sycl.cpp
+@@ -6702,6 +6702,29 @@
+ }
+ 
+ static void ggml_backend_sycl_graph_compute_impl(ggml_backend_sycl_context * sycl_ctx, ggml_cgraph * cgraph) {
++    // Opt-in diagnostic repair: preserve the original token microbatch and all
++    // math, but prevent prefill from running ahead across compute groups.
++    static const bool fence_prefill = []() {
++        const char * value = std::getenv("GGML_SYCL_FENCE_PREFILL_NODES");
++        if (!value || std::strcmp(value, "0") == 0) {
++            return false;
++        }
++        GGML_ASSERT(std::strcmp(value, "1") == 0);
++        return true;
++    }();
++    bool bounded_prefill = false;
++    if (fence_prefill) {
++        for (int i = 0; i < cgraph->n_nodes; ++i) {
++            const ggml_tensor * n = cgraph->nodes[i];
++            if (n->op == GGML_OP_MUL_MAT && n->src[1] && n->src[1]->ne[1] > 1) {
++                bounded_prefill = true;
++                break;
++            }
++        }
++        // A host wait is incompatible with recording a SYCL command graph.
++        GGML_ASSERT(!bounded_prefill || !g_ggml_sycl_enable_graph);
++    }
++    int submitted_groups = 0;
+     for (int i = 0; i < cgraph->n_nodes; i++) {
+         ggml_tensor * node = cgraph->nodes[i];
+         if (ggml_sycl_is_view_or_noop(node)) {
+@@ -6711,6 +6734,12 @@
+             continue;
+         }
+ 
++        if (bounded_prefill && submitted_groups > 0) {
++            SYCL_CHECK(CHECK_TRY_ERROR(sycl_ctx->stream()->wait_and_throw()));
++        }
++        if (bounded_prefill) {
++            ++submitted_groups;
++        }
+         const int nodes_to_skip = ggml_sycl_fuse(*sycl_ctx, cgraph, i);
+         if (nodes_to_skip != 0) {
+             i += nodes_to_skip;
+@@ -6812,6 +6841,11 @@
+             GGML_LOG_ERROR("%s: error: op not supported %s (%s)\n", __func__, node->name, ggml_op_name(node->op));
+         }
+         GGML_ASSERT(ok);
++    }
++    if (bounded_prefill && submitted_groups > 0) {
++        SYCL_CHECK(CHECK_TRY_ERROR(sycl_ctx->stream()->wait_and_throw()));
++        GGML_LOG_INFO("[SYCL] fenced prefill compute groups: groups=%d waits=%d; original token batch unchanged\n",
++                      submitted_groups, submitted_groups);
+     }
+ }
+ 

@@ -1,0 +1,72 @@
+--- a/ggml/src/ggml-sycl/ggml-sycl.cpp
++++ b/ggml/src/ggml-sycl/ggml-sycl.cpp
+@@ -6701,6 +6701,28 @@
+     return skip;
+ }
+ 
++static bool ggml_sycl_decode_only_graphs() {
++    static const bool enabled = []() {
++        const char * value = std::getenv("GGML_SYCL_GRAPH_DECODE_ONLY");
++        if (!value || std::strcmp(value, "0") == 0) {
++            return false;
++        }
++        GGML_ASSERT(std::strcmp(value, "1") == 0);
++        return true;
++    }();
++    return enabled;
++}
++
++static bool ggml_sycl_has_multi_token_matmul(const ggml_cgraph * cgraph) {
++    for (int i = 0; i < cgraph->n_nodes; ++i) {
++        const ggml_tensor * node = cgraph->nodes[i];
++        if (node->op == GGML_OP_MUL_MAT && node->src[1] && node->src[1]->ne[1] > 1) {
++            return true;
++        }
++    }
++    return false;
++}
++
+ static void ggml_backend_sycl_graph_compute_impl(ggml_backend_sycl_context * sycl_ctx, ggml_cgraph * cgraph) {
+     // Opt-in diagnostic repair: preserve the original token microbatch and all
+     // math, but prevent prefill from running ahead across compute groups.
+@@ -6714,15 +6736,17 @@
+     }();
+     bool bounded_prefill = false;
+     if (fence_prefill) {
+-        for (int i = 0; i < cgraph->n_nodes; ++i) {
+-            const ggml_tensor * n = cgraph->nodes[i];
+-            if (n->op == GGML_OP_MUL_MAT && n->src[1] && n->src[1]->ne[1] > 1) {
+-                bounded_prefill = true;
+-                break;
+-            }
+-        }
+-        // A host wait is incompatible with recording a SYCL command graph.
+-        GGML_ASSERT(!bounded_prefill || !g_ggml_sycl_enable_graph);
++        bounded_prefill = ggml_sycl_has_multi_token_matmul(cgraph);
++        // Preserve the old refusal unless the explicit decode-only mode keeps
++        // this prefill graph outside recording on the original eager queue.
++        if (bounded_prefill && g_ggml_sycl_enable_graph) {
++            GGML_ASSERT(ggml_sycl_decode_only_graphs());
++#ifdef GGML_SYCL_GRAPH
++            GGML_ASSERT(sycl_ctx->stream()->ext_oneapi_get_state() != sycl_ex::queue_state::recording);
++#else
++            GGML_ABORT("decode-only SYCL graph mode requires graph support");
++#endif
++        }
+     }
+     int submitted_groups = 0;
+     for (int i = 0; i < cgraph->n_nodes; i++) {
+@@ -7028,7 +7052,12 @@
+     bool              use_sycl_graph = false;
+     ggml_sycl_graph * graph          = nullptr;
+ 
+-    if (g_ggml_sycl_enable_graph) {
++    const bool eager_prefill = g_ggml_sycl_enable_graph && ggml_sycl_decode_only_graphs() &&
++                               ggml_sycl_has_multi_token_matmul(cgraph);
++    if (eager_prefill) {
++        GGML_LOG_INFO("[SYCL-GRAPH] decode-only: multi-token graph uses the original queue\n");
++    }
++    if (g_ggml_sycl_enable_graph && !eager_prefill) {
+         if (!ggml_sycl_info().devices[sycl_ctx->device].graph_support) {
+             // the device does not change, so report this once
+             if (sycl_ctx->graph_compatible != false) {

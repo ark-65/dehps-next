@@ -1,0 +1,78 @@
+--- a/ggml/src/ggml-sycl/ggml-sycl.cpp
++++ b/ggml/src/ggml-sycl/ggml-sycl.cpp
+@@ -5135,6 +5135,21 @@
+ }
+ 
+ 
++// K-quant DMMV implementations take const float * activations even in an
++// F16 build. Preserve F32 requests without diverting them to Q8_1 staging.
++static bool dmmv_preserves_f32_src1(enum ggml_type type) {
++    switch (type) {
++        case GGML_TYPE_Q2_K:
++        case GGML_TYPE_Q3_K:
++        case GGML_TYPE_Q4_K:
++        case GGML_TYPE_Q5_K:
++        case GGML_TYPE_Q6_K:
++            return true;
++        default:
++            return false;
++    }
++}
++
+ static bool can_use_dequantize_mul_mat_vec(const ggml_tensor * src0, const ggml_tensor * src1, ggml_tensor * dst) {
+     // The F16/BF16 qk=1 kernel iterates with stride 2*DMMV_X, requiring ne[0] to be
+     // a multiple of 2*DMMV_X. Quantized types use block-structured kernels that only
+@@ -5220,8 +5235,10 @@
+         use_dequantize_mul_mat_vec = false;
+     }
+ #ifdef GGML_SYCL_F16
+-    // dmmv may convert src1 to f16 in this build [TAG_GGML_PREC]
+-    use_dequantize_mul_mat_vec = use_dequantize_mul_mat_vec && ggml_sycl_src1_f16_ok(dst);
++    // Only the DMMV types that actually convert src1 need F16 permission.
++    // K-quant kernels consume and accumulate the original F32 activation.
++    use_dequantize_mul_mat_vec = use_dequantize_mul_mat_vec &&
++                                (dmmv_preserves_f32_src1(src0->type) || ggml_sycl_src1_f16_ok(dst));
+ #endif
+ 
+     bool use_mul_mat_vec_q = can_use_mul_mat_vec_q(ctx.device, src0, src1, dst);
+@@ -5360,13 +5377,6 @@
+ static bool ggml_sycl_mul_mat_glu_dmmv_esimd(ggml_backend_sycl_context & ctx, ggml_tensor * glu,
+                                              ggml_tensor * gate, ggml_tensor * up, const ggml_tensor * wu,
+                                              const ggml_tensor * wg, const ggml_tensor * act) {
+-    // the kernel reads the activation while writing the output; glu may reuse the dead activation's memory
+-    const char * act_begin = (const char *) act->data;
+-    const char * glu_begin = (const char *) glu->data;
+-    if (act_begin < glu_begin + ggml_nbytes(glu) && glu_begin < act_begin + ggml_nbytes(act)) {
+-        return false;
+-    }
+-
+     // install the reorder (SoA) layout the kernel needs, as the unfused DMMV path would
+     opt_for_reorder(&ctx, wu, act, up, mul_mat_algo::DMMV);
+     opt_for_reorder(&ctx, wg, act, gate, mul_mat_algo::DMMV);
+@@ -5380,8 +5390,25 @@
+     // log the up mat-mul: glu's own srcs are the two intermediates the fusion never materialises
+     scope_op_debug_print scope_dbg_print(__func__, up, /*num_src=*/2, " : fused with gate + GLU (ESIMD)");
+ 
++    // The planner may alias the dead activation with GLU output. Keep the
++    // original F32 input in owned scratch, rather than rejecting the direct
++    // kernel or allowing a write/read race. The in-order stream orders the
++    // copy before the kernel, matching the existing Q8_1 scratch lifetime.
++    ggml_sycl_pool_alloc<float> staged_activation(ctx.pool());
++    const float * input = (const float *) act->data;
++    const char * act_begin = (const char *) act->data;
++    const char * glu_begin = (const char *) glu->data;
++    if (act_begin < glu_begin + ggml_nbytes(glu) && glu_begin < act_begin + ggml_nbytes(act)) {
++        if (!ggml_is_contiguous(act)) {
++            return false;
++        }
++        float * copy = staged_activation.alloc(ggml_nelements(act));
++        SYCL_CHECK(CHECK_TRY_ERROR(ctx.stream()->memcpy(copy, act->data, ggml_nbytes(act))));
++        input = copy;
++    }
++
+     return ggml_sycl_dequantize_mul_mat_vec_glu_reorder_esimd(wu->type, ggml_get_glu_op(glu), wu->data, wg->data,
+-                                                              (const float *) act->data, (float *) glu->data,
++                                                              input, (float *) glu->data,
+                                                               (int) wu->ne[0], (int) wu->ne[1], ctx.stream());
+ }
+ #endif
