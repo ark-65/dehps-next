@@ -38,6 +38,10 @@ def profile(model_digest):
 
 
 def validate_profile(profile):
+    if "observation_grammar" in profile:
+        from .research_observation_schema import validate
+
+        validate(profile)
     if (
         profile.get("selector_contract") not in CONTRACTS
         or (profile.get("selector_contract") == CONTRACT
