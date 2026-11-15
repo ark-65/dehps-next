@@ -217,6 +217,10 @@ def select(
         id_seed=id_seed,
         selector_contract=profile["selector_contract"],
     )
+    if "observation_grammar" in profile:
+        from .research_observation_schema import bind
+
+        schema = bind(schema, context, profile)
     reply, receipt = infer(
         db,
         artifacts,

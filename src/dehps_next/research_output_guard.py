@@ -13,7 +13,8 @@ def identity():
     root = Path(__file__).parent
     h = hashlib.sha256()
     for name in ("research_output_guard.py", "research_stream.py", "research_short_thinking.py",
-                 "research_agent.py", "qwen_recovery.py", "research_selection.py", "research_receipts.py"):
+                 "research_agent.py", "qwen_recovery.py", "research_selection.py", "research_receipts.py",
+                 "research_observation_schema.py"):
         h.update(name.encode())
         h.update((root / name).read_bytes())
     return h.hexdigest()
