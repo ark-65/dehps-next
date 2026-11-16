@@ -145,6 +145,10 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse, *, profil
         )
         if profile.get("ground_output_schema"):
             payload["messages"][1]["content"] = canonical({**context, "output_contract": schema})
+        if "input_rendering" in profile:
+            from .research_candidate_facts import messages
+
+            payload["messages"] = messages(context, schema, profile)
     prompt_upper = (
         sum(len(m["content"].encode()) for m in payload["messages"])
         + (0 if profile and profile.get("ground_output_schema") else len(canonical(schema).encode()))

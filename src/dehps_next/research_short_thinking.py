@@ -43,6 +43,10 @@ def profile(model_digest, model="qwen3:4b", backend="Vulkan"):
 
 
 def validate_profile(profile):
+    if "input_rendering" in profile:
+        from .research_candidate_facts import validate
+
+        validate(profile)
     if "observation_grammar" in profile:
         from .research_observation_schema import validate
 

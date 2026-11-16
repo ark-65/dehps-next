@@ -6,11 +6,12 @@ import math
 from .errors import DomainError
 
 VERSION = "candidate-utility-enum-v1"
+FACTS_VERSION = "candidate-facts-enum-v2"
 
 
 def validate(profile):
     if (
-        profile.get("observation_grammar") != VERSION
+        profile.get("observation_grammar") not in (VERSION, FACTS_VERSION)
         or profile.get("selector_contract") != "comparative-v4.6-grounded-short"
         or profile.get("ground_output_schema") is not True
     ):
@@ -36,4 +37,13 @@ def bind(schema, context, profile):
             **record["properties"]["known_utility"], "enum": [value],
         }
         records[row["id"]] = record
+        if profile["observation_grammar"] == FACTS_VERSION and row["observed_evidence_keys"]:
+            keys = row["observed_evidence_keys"]
+            if not set(keys) <= {e["key"] for e in context["evidence"]}:
+                raise DomainError("OBSERVATION_SCHEMA_INPUT", "Exact references must exist in supplied evidence")
+            # Bind facts before generation, never edit a returned claim or rank.
+            record["properties"]["evidence"] = {
+                "type": "array", "minItems": 1, "maxItems": len(keys),
+                "items": {"type": "string", "enum": keys},
+            }
     return result
