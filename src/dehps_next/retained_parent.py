@@ -203,6 +203,14 @@ def seal(db, artifacts, target, clock):
             "以下Top100与唯一蓝球由该冻结父模型生成；回退预测单独结算，不计入正式合格推荐。",
         ],
     }
+    from .compound_output import CONTRACT, selected, make, mail_fields, description
+
+    if selected() == CONTRACT:
+        output = make(prediction["red_probabilities"], prediction["blue_probabilities"])
+        payload.update(mail_fields(output))
+        payload["reference"]["output_contract"] = CONTRACT
+        payload["reference"]["compound_output_digest"] = output["digest"]
+        payload["lines"] = [line for line in payload["lines"] if "Top100" not in line] + [description(output)]
     with db.pool.connection() as c, c.transaction():
         c.execute("SELECT pg_advisory_xact_lock(740142)")
         if not target["prepare_time"] <= clock().astimezone(ZONE) < target["deadline_time"]:
@@ -257,6 +265,12 @@ def settle(db, issue):
         "distribution": {str(i): matches.count(i) for i in range(7)},
         "scope": "PARENT_FALLBACK_SETTLEMENT_NOT_QUALIFIED_STATISTICS",
     }
+    if p.get("compound_output"):
+        from .compound_output import settle as settle_compound
+
+        payload["compound_output"] = settle_compound(p["compound_output"], row)
+        payload["output_contract"] = p["compound_output"]["contract"]
+        payload["blue_hit"] = payload["compound_output"]["blue_top2_hit"]
     with db.pool.connection() as c:
         c.execute(
             "INSERT INTO parent_fallback_settlements(issue,payload) VALUES(%s,%s) ON CONFLICT DO NOTHING",

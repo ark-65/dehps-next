@@ -47,7 +47,7 @@ class Reports:
             "SELECT evidence FROM effective_forecast_selections WHERE issue=%s", (prediction["issue"],)
         )[0]["evidence"]
         windows = selection["windows"]
-        return {
+        payload = {
             "title": f"[DEHPS Next] {prediction['issue']}期最终开奖前分析与号码报告",
             "send_deadline_utc": target["deadline_time"].astimezone(UTC).isoformat(),
             "blue": data["blue_top1"],
@@ -68,6 +68,14 @@ class Reports:
             ],
         }
 
+        if data.get("compound_output"):
+            from .compound_output import description, mail_fields
+
+            payload.update(mail_fields(data["compound_output"]))
+            payload["lines"] = [line for line in payload["lines"] if "Top100" not in line and "红5及以上" not in line]
+            payload["lines"].append(description(data["compound_output"]))
+        return payload
+
     @staticmethod
     def validation_line(windows, business=None):
         labels = {
@@ -81,7 +89,9 @@ class Reports:
             if key not in windows:
                 continue
             w = windows[key]
-            text = f"{labels[key]}蓝球{w['blue_top1_hits']}/{w['n']}"
+            new_output = business and "two shared blueTop2" in business.get("definition", "")
+            text = (f"{labels[key]}蓝球Top2 {business['windows'][key]['blue_hits']}/{w['n']}"
+                    if new_output else f"{labels[key]}蓝球Top1 {w['blue_top1_hits']}/{w['n']}")
             if business:
                 text += f"、红5及以上{business['windows'][key]['red5_periods']}/{w['n']}"
             parts.append(text)
@@ -241,10 +251,14 @@ class Reports:
                         target["issue"],
                         {
                             **{k: reference[k] for k in ("blue", "tickets", "reference", "parent_fallback")},
-                            "title": f"[DEHPS Next] {target['issue']}期剪枝父节点Top100回退封存报告",
+                            **({"compound_output": reference["compound_output"], "output_contract": reference["output_contract"], "blues": reference["blues"]}
+                               if reference.get("compound_output") else {}),
+                            "title": f"[DEHPS Next] {target['issue']}期剪枝父节点{'Top10复式' if reference.get('compound_output') else 'Top100'}回退封存报告",
                             "send_deadline_utc": target["deadline_time"].astimezone(UTC).isoformat(),
                             "lines": [
                                 *self.revision_lines(target["issue"]),
+                                "17:00收尾时无正式合格候选；已封存剪枝保留父模型的Top10七红二蓝复式，按新口径独立结算。"
+                                if reference.get("compound_output") else
                                 "17:00收尾时无通过原有正式资格门槛的候选；已封存剪枝保留父模型的Top100与唯一蓝球，独立结算。",
                                 f"{'近100期、近50期、近10期' if self.db.settings.research_validation == 'recent-windows-v4' else '近100期、近10期与历史抽样'}核验状态：{state['draft']['state']}",
                                 f"本轮正式候选校验原因：{(state['draft'].get('gate') or {}).get('reasons', ['尚无完整验证结果'])}",
@@ -252,7 +266,8 @@ class Reports:
                                 "提前验收预测已保留为验收记录，不算本期正式报告；业务覆盖缺口如实计入。50%目标未建立。",
                                 *reference["lines"],
                                 *self.probability_lines(),
-                                self.validation_line(
+                                "父模型原资格审查属于旧6红Top100/蓝Top1口径，不作为新7＋2成绩；新口径前向证据从本次封存起独立累计。"
+                                if reference.get("compound_output") else self.validation_line(
                                     reference["reference"]["validation"]["windows"],
                                     reference["reference"]["validation"].get("business"),
                                 ),
@@ -297,6 +312,14 @@ class Reports:
                 reference_lines = [
                     f"开奖前冻结研究参考蓝球{payload['blue']:02d}：{'命中' if payload['blue'] == missed['blue'] else '未命中'}；红球Top100最高命中{max(matches)}/6。",
                     f"研究参考命中分布：{ {str(i): matches.count(i) for i in range(7)} }；该参考结果不混入合格推荐统计。",
+                ]
+            if prior and prior[0]["payload"].get("compound_output"):
+                from .compound_output import settle as settle_compound
+
+                compound = settle_compound(prior[0]["payload"]["compound_output"], missed)
+                reference_lines = [
+                    f"开奖前Top10七红二蓝复式：蓝Top2{'命中' if compound['blue_top2_hit'] else '未命中'}；红球最高{compound['red_max_matches']}/6；组分布{compound['group_hit_distribution']}。",
+                    f"去重单式红球命中分布：{compound['unique_single_hit_distribution']}；新7＋2口径独立统计。",
                 ]
             self.mail.queue(
                 "POST",
@@ -349,7 +372,7 @@ class Reports:
     def post_payload(self, row):
         metrics = row["metrics"]
         history = self.forward_summary()
-        return {
+        payload = {
             "title": f"[DEHPS Next] {row['issue']}期开奖结果与预测复盘",
             "lines": [
                 f"官方开奖号：{' '.join(f'{v:02d}' for v in row['red'])} + {row['blue']:02d}",
@@ -361,6 +384,12 @@ class Reports:
                 "这是命中和概率复盘，不是实际购票或奖金到账证明；50%目标未建立。",
             ],
         }
+
+        if metrics.get("compound_output"):
+            m = metrics["compound_output"]
+            payload["lines"] = [line for line in payload["lines"] if "Top100" not in line and "累计真实前向" not in line and "开奖前蓝球推荐" not in line]
+            payload["lines"].append(f"Top10七红二蓝复式最高命中{m['red_max_matches']}/6；蓝球Top2{'命中' if m['blue_top2_hit'] else '未命中'}；组命中分布{m['group_hit_distribution']}；去重展开单式分布{m['unique_single_hit_distribution']}。与旧Top100分开统计。")
+        return payload
 
     def acceptance(self):
         predictions = self.predictions()

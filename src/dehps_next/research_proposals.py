@@ -186,6 +186,8 @@ def propose_batch(controller, campaign, nodes, count, job, pulse):
         context["task"] = (
             "Choose one novel ID per disjoint slot. Cite the exact evidence_key. Seek incremental red5+ Top100 hit rate or blueTop1 hit rate gains against the parent; both rates must not decline in100/50/10 chronological windows.50 percent is not a promotion threshold. Loss and toy tools alone do not prove hit-rate gains. Explain the parameter change and its risk. Inconclusive is not regression."
         )
+        if campaign["protocol"].get("output_contract"):
+            context["task"] = context["task"].replace("Top100", "Top10 seven-red compound").replace("blueTop1", "blueTop2")
         context["observed_feedback"] = [{k: v for k, v in e.items() if k != "node"} for e in evidence]
         context["acceptance"] = {
             "primary": campaign["protocol"]["primary"],

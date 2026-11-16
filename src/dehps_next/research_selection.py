@@ -101,7 +101,8 @@ def make_context(
             for key in group
         ],
         "parent": {"spec": parent, "hits100_50_10": counts(business)},
-        "hits_definition": "red5+Top100,blueTop1 counts for100/50/10;all nested in100 labels",
+        "hits_definition": ("red5+Top10_seven_red,blueTop2 counts for100/50/10;all nested in100 labels"
+                            if business.get("output_contract") else "red5+Top100,blueTop1 counts for100/50/10;all nested in100 labels"),
         "promotion": "one100-rate improves;both nondecreasing in100/50/10;no50percent gate",
         "evidence": [
             {k: e[k] for k in ("key", "spec", "hits", "verdict", "known_utility") if k in e} for e in evidence
@@ -364,14 +365,14 @@ def mechanism_metrics(db, study, profile):
 
             validate_receipt(m, actual_profile)
         gpu = m.get("offload") or {}
+        from .research_short_thinking import backend_receipt_ok
+
         if (
             receipt["model_digest"] != profile["model_digest"]
             or m.get("selection_profile") != actual_profile
             or not m.get("prompt_eval_count")
             or not m.get("eval_count")
-            or not gpu.get("size")
-            or gpu.get("size_vram", 0) < gpu["size"]
-            or gpu.get("context_length") != profile["options"]["num_ctx"]
+            or not backend_receipt_ok(gpu, profile)
             or digest(p["proof"]["context"]) != p["proof"]["input_digest"]
         ):
             raise DomainError(

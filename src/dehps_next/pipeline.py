@@ -135,6 +135,10 @@ class Pipeline:
             ):
                 raise DomainError("TARGET_DATE_CONFLICT", "Registered draw date differs from official data")
         metrics = evaluate(prediction["payload"], actual, prediction["baseline"])
+        if prediction["payload"].get("compound_output"):
+            from .compound_output import settle
+
+            metrics["compound_output"] = settle(prediction["payload"]["compound_output"], actual)
         pulse()
         with self.db.pool.connection() as c, c.transaction():
             self.db.fence(c, job)

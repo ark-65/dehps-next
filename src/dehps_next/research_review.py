@@ -192,7 +192,8 @@ def review_context(parent_spec, parent_business, offered, memory, *, count=2, wi
         "C": {k: spec_row(s) for k, s in candidates.items()},
         "P": spec_row(parent_spec),
         "parent_hits": counts(parent_business),
-        "hits": "[red5+Top100,blueTop1] for100/50/10;all nested in100 issues",
+        "hits": ("[red5+Top10_seven_red,blueTop2] for100/50/10;all nested in100 issues"
+                 if campaign["protocol"].get("output_contract") else "[red5+Top100,blueTop1] for100/50/10;all nested in100 issues"),
         "rule": "One100-rate improves;both rates nondecreasing in100/50/10.No50% gate.",
         "F": {e["key"]: [spec_row(e["spec"]), e["hits"], e["verdict"]] for e in evidence},
     }
