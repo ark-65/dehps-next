@@ -20,21 +20,26 @@ CADENCE = {"min_interval_seconds": 1800, "min_new_feedback": 20}
 PERFORMANCE_GATE = {"mean_seconds_max": 240, "p95_seconds_max": 300}
 
 
-def profile(model_digest):
-    return {
+def profile(model_digest, model="qwen3:4b", backend="Vulkan"):
+    result = {
         "selector_contract": CONTRACT, "transport": TRANSPORT, "ground_output_schema": True,
         "assessment_contract": ASSESSMENT_CONTRACT,
-        "model": "qwen3:4b", "model_digest": model_digest, "think": True,
+        "model": model, "model_digest": model_digest, "think": True,
         "thinking_budget_tokens": THINKING_TOKENS, "cadence": CADENCE,
         "raw_prompt_template": "qwen3-chatml-v1",
         "repetition_guard": "8_IDENTICAL_CONSECUTIVE_256_CHARACTER_BLOCKS",
         "backend": {
             "image": "sha256:b2f0122c476bc9fe7ce679d8bb4bd555351e25e2554eefb156f61cb0a89cf429",
-            "engine": "Vulkan", "flash_attention": True, "kv_cache": "q8_0", "cpu_threads": 4,
+            "engine": backend, "flash_attention": True, "kv_cache": "q8_0", "cpu_threads": 4,
         },
         "options": {"temperature": 0.6, "top_p": 0.95, "top_k": 20, "min_p": 0,
                     "seed": 1729, "num_ctx": CONTEXT_TOKENS, "num_predict": ANSWER_TOKENS},
     }
+
+    if backend == "CPU":
+        result["options"].update(num_gpu=0, num_thread=4)
+    validate_profile(result)
+    return result
 
 
 def validate_profile(profile):
@@ -47,7 +52,11 @@ def validate_profile(profile):
         or (profile.get("selector_contract") == CONTRACT
             and profile.get("assessment_contract") != ASSESSMENT_CONTRACT)
         or profile.get("transport") != TRANSPORT
-        or profile.get("model") != "qwen3:4b"
+        or profile.get("model") not in ("qwen3:4b", "qwen3:1.7b")
+        or (profile.get("model") == "qwen3:1.7b" and (
+            profile.get("backend", {}).get("engine") != "CPU"
+            or profile.get("options", {}).get("num_gpu") != 0
+            or profile.get("options", {}).get("num_thread") != 4))
         or profile.get("think") is not True
         or profile.get("thinking_budget_tokens") != THINKING_TOKENS
         or profile.get("options", {}).get("num_predict") != ANSWER_TOKENS
@@ -81,13 +90,19 @@ def offload(profile):
          if r.get("digest") == profile["model_digest"]), {}
     )
     result = {k: loaded.get(k) for k in ("size", "size_vram", "context_length")}
-    if (
-        type(result["size"]) is not int or result["size"] <= 0
-        or type(result["size_vram"]) is not int or result["size_vram"] < result["size"]
-        or result["context_length"] != CONTEXT_TOKENS
-    ):
-        raise DomainError("LOCAL_GPU_OFFLOAD_REQUIRED", "Short thinking requires full GPU and frozen context")
+    if not backend_receipt_ok(result, profile):
+        raise DomainError("LOCAL_BACKEND_MISMATCH", "Actual residency differs from the frozen backend/context")
     return result
+
+
+def backend_receipt_ok(residency, profile):
+    size, vram = residency.get("size"), residency.get("size_vram")
+    if (type(size) is not int or size <= 0 or type(vram) is not int
+        or residency.get("context_length") != profile["options"]["num_ctx"]):
+        return False
+    if profile.get("backend", {}).get("engine") == "CPU":
+        return profile["model"] == "qwen3:1.7b" and profile["options"].get("num_gpu") == 0 and vram == 0
+    return vram >= size
 
 
 def generate(db, artifacts, campaign, job, call, payload, logical_request, progress, pulse, profile,
@@ -215,15 +230,13 @@ def validate_receipt(metrics, profile):
         or first.get("selection_profile") != profile or first.get("phase") != "THINKING_PREFIX"
         or type(first.get("eval_count")) is not int or not 0 < first["eval_count"] <= THINKING_TOKENS
         or not first.get("prompt_eval_count") or first.get("done_reason") not in ("length", "stop")
-        or not gpu.get("size") or type(gpu.get("size_vram")) is not int
-        or gpu["size_vram"] < gpu["size"]
-        or gpu.get("context_length") != CONTEXT_TOKENS
+        or not backend_receipt_ok(gpu, profile)
         or short.get("transport") != TRANSPORT
         or short.get("actual_thought_prefix_sha256") != sha(first.get("raw_thinking", "").split("</think>", 1)[0])
         or type(metrics.get("eval_count")) is not int or not 0 < metrics["eval_count"] <= ANSWER_TOKENS
         or metrics.get("done_reason") != "stop"
     ):
-        raise DomainError("MECHANISM_NOT_VALIDATED", "Require both actual bounded full-GPU provider receipts")
+        raise DomainError("MECHANISM_NOT_VALIDATED", "Require both actual bounded provider receipts under the frozen backend")
 
 
 def performance(db, study, profile):

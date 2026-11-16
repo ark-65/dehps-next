@@ -28,6 +28,7 @@ REQUEST_INTERVAL_SECONDS = 300
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--corpus', required=True)
+    parser.add_argument('--model', choices=('qwen3:4b', 'qwen3:1.7b'), default='qwen3:4b')
     parser.add_argument('--receipt', required=True)
     parser.add_argument('--schedule-amendment', type=Path)
     parser.add_argument('--idle-admission', action='store_true')
@@ -45,6 +46,10 @@ def main():
     s = Settings.from_env()
     database, runtime = ('dehps_next_qwen_latency_20261113', 'qwen-latency-case') if args.latency_revalidation else (
         'dehps_next_qwen4_grounded_acceptance', 'grounded-case')
+    if args.model == 'qwen3:1.7b':
+        if args.latency_revalidation or s.inference_backend != 'cpu':
+            raise SystemExit('The separately frozen1.7B recovery requires explicit CPU residency')
+        database, runtime = 'dehps_next_qwen17_acceptance_20261116', 'qwen17-case'
     if conninfo_to_dict(s.database_url).get('dbname') != database or s.runtime.name != runtime:
         raise SystemExit('Only the named isolated Next acceptance database/runtime is allowed')
     d = Database(s)
@@ -52,7 +57,8 @@ def main():
     a = Artifacts(s, d)
     m.CORPUS, m.CONTEXT = args.corpus, args.corpus + '-context'
     inventory = request_json('/api/tags')['models']
-    config = profile(next(r['digest'] for r in inventory if r['name'] == 'qwen3:4b'))
+    config = profile(next(r['digest'] for r in inventory if r['name'] == args.model),
+                     model=args.model, backend='CPU' if args.model == 'qwen3:1.7b' else 'Vulkan')
     header = m.prepare(d, a)
     revalidation = None
     if args.latency_revalidation:

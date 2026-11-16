@@ -22,6 +22,7 @@ def endpoint():
         "http://next-inference:11434",
         "http://127.0.0.1:11435",
         "http://next-review-inference:11434",
+        "http://next-qwen17-cpu:11434",
     ):
         raise DomainError(
             "LOCAL_INFERENCE_CONFIGURATION", "Configure the accepted Next-local inference endpoint"
@@ -267,6 +268,10 @@ def infer(db, artifacts, campaign, job, stage, context, schema, pulse, *, profil
                 raise DomainError(
                     "LOCAL_MODEL_CONTEXT_MISMATCH", "Actual context differs from the frozen profile"
                 )
+        if profile and profile.get("backend", {}).get("engine") == "CPU":
+            from .research_short_thinking import offload
+
+            metrics["offload"] = offload(profile)
         with db.pool.connection() as c:
             c.execute("UPDATE research_model_calls SET metrics=%s WHERE id=%s", (Jsonb(metrics), call))
         pulse()

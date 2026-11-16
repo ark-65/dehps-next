@@ -67,7 +67,7 @@ class Research:
         if self.db.settings.research_validation == "recent-windows-v4" and topic:
             topic = {
                 **topic,
-                "question": "Improve red5+ Top100 and blueTop1 hit rates on chronological100/50/10 replay without future labels",
+                "question": "Improve red5+ and blueTop1 under the frozen output contract on chronological100/50/10 replay without future labels",
             }
         config = {
             "planner": planner,

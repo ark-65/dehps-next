@@ -53,6 +53,7 @@ class Mail:
     def render(report):
         p = report["payload"]
         lines = [p["title"], "", *p["lines"]]
+        blue_label = " · ".join(f"{v:02d}" for v in p["blues"]) if p.get("blues") else f"{p.get('blue', 0):02d}"
         heading = (
             "剪枝父节点回退红球Top100 / 唯一蓝球Top1（独立结算）"
             if p.get("parent_fallback")
@@ -60,10 +61,17 @@ class Mail:
             if p.get("reference")
             else "红球 Top100 / 唯一蓝球 Top1"
         )
+        if p.get("compound_output"):
+            from .compound_output import validate
+
+            validate(p["compound_output"])
+            if p["tickets"] != p["compound_output"]["tickets"] or p["blue"] != p["compound_output"]["blue"] or p.get("blues") != p["compound_output"]["blues"]:
+                raise DomainError("MAIL_OUTPUT_CHANGED", "Mail differs from sealed compound output")
+            heading = "Top10复式：每组7红＋2蓝（父节点研究参考，独立结算）" if p.get("parent_fallback") else "Top10复式：每组7红＋2蓝"
         if p.get("tickets"):
             lines.extend(["", heading])
             lines.extend(
-                f"{i:03d}. {' '.join(f'{v:02d}' for v in red)} + {p['blue']:02d}"
+                f"{i:03d}. {' '.join(f'{v:02d}' for v in red)} + {blue_label}"
                 for i, red in enumerate(p["tickets"], 1)
             )
         text = "\n".join(lines)
@@ -74,7 +82,7 @@ class Mail:
         if p.get("tickets"):
             body += f"<h3>{html.escape(heading)}</h3><table cellpadding='7' style='border-collapse:collapse;width:100%'><tr><th>序号</th><th>红球</th><th>蓝球</th></tr>"
             for i, red in enumerate(p["tickets"], 1):
-                body += f"<tr style='border-top:1px solid #ddd'><td>{i:03d}</td><td style='color:#b91c1c'>{' · '.join(f'{v:02d}' for v in red)}</td><td style='color:#1d4ed8'>{p['blue']:02d}</td></tr>"
+                body += f"<tr style='border-top:1px solid #ddd'><td>{i:03d}</td><td style='color:#b91c1c'>{' · '.join(f'{v:02d}' for v in red)}</td><td style='color:#1d4ed8'>{blue_label}</td></tr>"
             body += "</table>"
         return text, body + "</body></html>"
 

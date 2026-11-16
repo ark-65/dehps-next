@@ -37,13 +37,22 @@ def make_protocol(size):
         "promotion": "one_recent100_hit_rate_increases;both_non_decreasing_in100_50_10",
         "evidence": "OBSERVED_PAIRED_DEVELOPMENT_REPLAY;NOT_SIGNIFICANT_OR_FORWARD_PROOF",
     }
+    from .compound_output import CONTRACT, selected
+
+    if selected() == CONTRACT:
+        protocol["output_contract"] = CONTRACT
+        protocol["primary"] = "paired_red5_top10_seven_red_and_blue_top2_rates"
     protocol["digest"] = digest(protocol)
     return protocol
 
 
 @lru_cache(maxsize=256)
-def _red_hits(probabilities, actual):
-    tickets = top_red_combinations(list(probabilities))
+def _red_hits(probabilities, actual, output_contract=None):
+    from .compound_output import CONTRACT, tickets as compound_tickets
+
+    if output_contract not in (None, CONTRACT):
+        raise DomainError("OUTPUT_CONTRACT_UNKNOWN", "Unknown frozen hit contract")
+    tickets = compound_tickets(list(probabilities)) if output_contract == CONTRACT else top_red_combinations(list(probabilities))
     matches = [len(set(ticket) & set(actual)) for ticket in tickets]
     return max(matches), sum(n >= 5 for n in matches), digest(tickets)
 
@@ -68,14 +77,18 @@ def measure(rows, snapshot, protocol):
         hit = int(blue.index(max(blue)) + 1 == actual["blue"])
         if hit != row["blue_hit"]:
             raise DomainError("VALIDATION_SCORE_CHANGED", "Blue hit differs from frozen probabilities")
-        maximum, five_tickets, top_digest = _red_hits(tuple(row["red_probabilities"]), tuple(actual["red"]))
+        if protocol.get("output_contract"):
+            ranked = sorted(range(16), key=lambda b: (-blue[b], b))
+            hit = int(actual["blue"] - 1 in ranked[:2])
+        maximum, five_tickets, top_digest = _red_hits(tuple(row["red_probabilities"]), tuple(actual["red"]), protocol.get("output_contract"))
         periods[i] = {
             "issue": actual["issue"],
             "red5_hit": int(maximum >= 5),
             "max_red": maximum,
             "red5_tickets": five_tickets,
             "blue_hit": hit,
-            "top100_digest": top_digest,
+            **({"red_output_digest": top_digest, "output_contract": protocol["output_contract"]}
+               if protocol.get("output_contract") else {"top100_digest": top_digest}),
         }
     windows = {}
     for key in WINDOWS:
@@ -94,7 +107,9 @@ def measure(rows, snapshot, protocol):
         "periods": periods,
         "periods_digest": digest(periods),
         "red5_issues": [p["issue"] for p in periods.values() if p["red5_hit"]],
-        "definition": "An issue counts once if any of its100 frozen red combinations hits5 or6;one blueTop1 per issue",
+        **({"output_contract": protocol["output_contract"]} if protocol.get("output_contract") else {}),
+        "definition": ("An issue counts once if any of10 frozen seven-red groups hits5 or6;two shared blueTop2"
+                       if protocol.get("output_contract") else "An issue counts once if any of its100 frozen red combinations hits5 or6;one blueTop1 per issue"),
         "evidence": protocol["evidence"],
     }
 

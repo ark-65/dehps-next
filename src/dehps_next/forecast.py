@@ -155,6 +155,10 @@ class Forecast:
             + """ ORDER BY n.completed_at DESC LIMIT 64""",
             values,
         )
+        from .compound_output import CONTRACT, selected
+
+        wanted_output = CONTRACT if selected() == CONTRACT else None
+        found = [n for n in found if n["protocol"].get("output_contract") == wanted_output]
         candidates, snapshots = [], {}
         for node in found:
             rows = decode(self.artifacts.read(node["evaluation"]["scores"]))["rows"]
@@ -332,6 +336,9 @@ class Forecast:
                     "INSERT INTO consumptions VALUES(%s,%s,%s,true)",
                     (model_ref["sha256"], row["issue"], node["spec"]["epochs"]),
                 )
+            from .compound_output import attach
+
+            prediction = attach(prediction)
             c.execute(
                 "INSERT INTO predictions(cycle_id,model_id,issue,mode,cutoff,payload,payload_digest,baseline,sealed_at) VALUES(%s,%s,%s,'FORWARD',%s,%s,%s,%s,%s)",
                 (
