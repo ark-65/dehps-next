@@ -123,6 +123,39 @@ class Reports:
             (LOOP,),
         )
 
+    def recover_results(self):
+        """Recover official notices even when the host missed final preparation.
+
+        The first immutable final report anchors the subscribed mail era. Never
+        backfill imported history or invent a pre-draw prediction after recovery.
+        """
+        queued = []
+        for result in self.db.rows("""SELECT d.issue,d.red,d.blue,p.first_verified_at,p.source_id,
+              EXISTS(SELECT 1 FROM mail_reports pre WHERE pre.issue=d.issue
+                     AND pre.kind='PRE_FINAL') AS had_final
+            FROM draws d JOIN official_publications p USING(issue)
+            JOIN sources source ON source.id=p.source_id
+            WHERE p.first_verified_at<=now() AND d.draw_at<=now()
+              AND p.provenance='OFFICIAL_CWL_COMPLETE_LABEL_FIRST_VERIFIED_IN_NEXT'
+              AND source.provenance LIKE 'OFFICIAL_CWL%%' AND source.url=%s
+              AND d.draw_at>=(SELECT min(created_at) FROM mail_reports WHERE kind='PRE_FINAL')
+              AND NOT EXISTS(SELECT 1 FROM mail_reports r WHERE r.issue=d.issue
+                             AND r.kind IN ('POST','DRAW_RESULT'))
+            ORDER BY d.draw_at LIMIT 32""", (CWL_URL,)):
+            status = (
+                "预测结算尚未完成；本邮件先提供已核验的开奖号码，结算完成后另发复盘。"
+                if result["had_final"] else
+                "本期未形成最终开奖前报告；恢复后补发官方结果，记录预测覆盖缺口，不补造开奖前预测或命中。"
+            )
+            queued.append(self.mail.queue("DRAW_RESULT", result["issue"], {
+                "title": f"[DEHPS Next] {result['issue']}期官方开奖结果（结算待完成）"
+                if result["had_final"] else f"[DEHPS Next] {result['issue']}期官方开奖结果（开奖前报告缺失）",
+                "lines": [f"期号：{result['issue']}",
+                          f"官方开奖号：{' '.join(f'{v:02d}' for v in result['red'])} + {result['blue']:02d}",
+                          f"官方完整结果核验时间：{result['first_verified_at'].astimezone(ZONE).isoformat()}",
+                          status, f"Next官方来源收据：{result['source_id']}"]}, "OFFICIAL_RESULT"))
+        return {"queued": len(queued), "reports": queued}
+
     def tick(self, prepare_now=False, deliver=True):
         state = {
             "at": self.clock().isoformat(),
@@ -279,25 +312,7 @@ class Reports:
                 },
                 "STATUS",
             )
-        # A verified result is independently useful even when settlement is
-        # delayed. Keep its own immutable identity so a later POST can follow.
-        for result in self.db.rows("""SELECT d.issue,d.red,d.blue,p.first_verified_at,p.source_id
-            FROM draws d JOIN official_publications p USING(issue)
-            JOIN sources source ON source.id=p.source_id
-            WHERE p.first_verified_at<=now() AND d.draw_at<=now()
-              AND p.provenance='OFFICIAL_CWL_COMPLETE_LABEL_FIRST_VERIFIED_IN_NEXT'
-              AND source.provenance LIKE 'OFFICIAL_CWL%%'
-              AND source.url=%s
-              AND EXISTS(SELECT 1 FROM mail_reports pre WHERE pre.issue=d.issue AND pre.kind='PRE_FINAL')
-              AND NOT EXISTS(SELECT 1 FROM mail_reports r WHERE r.issue=d.issue AND r.kind IN ('POST','DRAW_RESULT'))
-            ORDER BY d.issue DESC LIMIT 32""", (CWL_URL,)):
-            self.mail.queue("DRAW_RESULT", result["issue"], {
-                "title": f"[DEHPS Next] {result['issue']}期官方开奖结果（结算待完成）",
-                "lines": [f"期号：{result['issue']}",
-                          f"官方开奖号：{' '.join(f'{v:02d}' for v in result['red'])} + {result['blue']:02d}",
-                          f"官方完整结果核验时间：{result['first_verified_at'].astimezone(ZONE).isoformat()}",
-                          "预测结算尚未完成；本邮件先提供已核验的开奖号码，结算完成后另发复盘。",
-                          f"Next官方来源收据：{result['source_id']}"]}, "OFFICIAL_RESULT")
+        state["result_recovery"] = self.recover_results()
         overdue = self.db.rows(
             "SELECT p.issue FROM predictions p JOIN cycles cy ON cy.id=p.cycle_id JOIN targets t ON t.issue=p.issue WHERE cy.loop_id=%s AND t.draw_at<now()-interval '1 hour' AND NOT EXISTS(SELECT 1 FROM mail_reports r WHERE r.kind IN ('POST','DRAW_RESULT') AND r.issue=p.issue) LIMIT 1",
             (LOOP,),
