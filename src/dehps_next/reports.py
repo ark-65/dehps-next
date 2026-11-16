@@ -138,7 +138,9 @@ class Reports:
             WHERE p.first_verified_at<=now() AND d.draw_at<=now()
               AND p.provenance='OFFICIAL_CWL_COMPLETE_LABEL_FIRST_VERIFIED_IN_NEXT'
               AND source.provenance LIKE 'OFFICIAL_CWL%%' AND source.url=%s
-              AND d.draw_at>=(SELECT min(created_at) FROM mail_reports WHERE kind='PRE_FINAL')
+              AND (EXISTS(SELECT 1 FROM mail_reports pre WHERE pre.issue=d.issue AND pre.kind='PRE_FINAL')
+                   OR d.draw_at>=(SELECT min(anchor.draw_at) FROM draws anchor
+                       JOIN mail_reports pre ON pre.issue=anchor.issue WHERE pre.kind='PRE_FINAL'))
               AND NOT EXISTS(SELECT 1 FROM mail_reports r WHERE r.issue=d.issue
                              AND r.kind IN ('POST','DRAW_RESULT'))
             ORDER BY d.draw_at LIMIT 32""", (CWL_URL,)):
