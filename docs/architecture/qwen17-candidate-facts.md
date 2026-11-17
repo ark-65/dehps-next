@@ -42,3 +42,29 @@ both results in one later successful request can establish restored linkage.
 Primary seven-red/two-blue Top10 training and draw-day mail policy remain active.
 Isolated historical mail acceptance is separate from actual pre-draw delivery,
 post-draw authoritative settlement, sustained stability and predictive benefit.
+
+## November17 full-attempt follow-up
+
+The facts-last profile stopped at its predeclared futility boundary after76
+actual requests. Feedback accuracy was30/38, with five invalid replies and three
+other wrong selections. Even all remaining feedback answers correct could reach
+only64/72, below90percent. All76 native receipts remain; the other68 slots are
+NOT_RUN. The observed mean107.72s/p95149.93s is partial latency evidence, not a
+completed144-request latency pass. Primary activation did not occur.
+
+Exact citations were retained, but failures remained in signed-score ordering,
+ranking/selection consistency and meaningful assessments. The independent
+`candidate-facts-compact-v2` view retains all original input facts and the full
+backend JSON schema, while replacing the repeated schema in prompt text with a
+compact output description. Its generic instructions explain descending signed
+utilities and ask for a consistency check. It never computes or supplies a
+winning ID, reorders candidates, or repairs a returned answer. The old view is
+unchanged.
+
+A bounded development plan first checks six known failure slots with both arms,
+then compares deterministic sampling only if that direction fails. These are
+known-case development probes, not qualification. A passing direction still
+needs its own144 fresh requests, unchanged gates, fixed24 comparison and actual
+primary feedback closure. Failed semantic answers and infrastructure incidents
+remain recorded; exact durable outcomes can be recovered without another model
+call. Seven-red/two-blue training and the real draw-day mail schedule continue.
