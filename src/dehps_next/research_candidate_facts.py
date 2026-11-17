@@ -5,10 +5,11 @@ from .errors import DomainError
 
 VERSION = "candidate-facts-last-v1"
 COMPACT_VERSION = "candidate-facts-compact-v2"
+GROUPED_VERSION = "candidate-facts-grouped-v3"
 
 
 def validate(profile):
-    if (profile.get("input_rendering") not in (VERSION, COMPACT_VERSION)
+    if (profile.get("input_rendering") not in (VERSION, COMPACT_VERSION, GROUPED_VERSION)
             or profile.get("observation_grammar") != "candidate-facts-enum-v2"
             or profile.get("selector_contract") != "comparative-v4.6-grounded-short"
             or profile.get("ground_output_schema") is not True):
@@ -26,7 +27,8 @@ def messages(context, schema, profile):
     # Keep the original JSON object and every value: existing receipts can still
     # verify the exact logical input after removing output_contract. Only object
     # field presentation changes; group and candidate array order stays frozen.
-    compact = profile["input_rendering"] == COMPACT_VERSION
+    grouped = profile["input_rendering"] == GROUPED_VERSION
+    compact = profile["input_rendering"] in (COMPACT_VERSION, GROUPED_VERSION)
     contract = {
         "assessments": "One object per exact candidate ID; fields assessment, evidence, known_utility. "
                        "assessment:8-96 character comparison of utility or risk, never only an ID or verdict. "
@@ -59,6 +61,26 @@ def messages(context, schema, profile):
             "Each assessment must compare utility or risk, not merely repeat an ID or verdict. "
             "Before answering check every group has every ID once and selection equals its FIRST ranked ID. "
             "IDs and input positions imply no preference. Never invent future outcomes."
+        )
+    if grouped:
+        contract["group_facts"] = [
+            {"group_name": group, "select_count": 1, "alternatives": [
+                {"candidate_id": key, "known_utility": candidates[key]["known_utility"],
+                 "exact_evidence_keys": candidates[key]["observed_evidence_keys"]}
+                for key in group_ids
+            ]}
+            for group, group_ids in context["groups"].items()
+        ]
+        # Repeat only supplied facts at the end, preserving alternative order.
+        # No maximum, derived rank or preferred candidate is provided.
+        presented.pop("output_contract")
+        presented["output_contract"] = contract
+        system += (
+            f" There are exactly {len(context['groups'])} groups. "
+            "Group names are " + ", ".join(context["groups"]) + ". "
+            "Candidate IDs are alternatives WITHIN those groups, never group names. "
+            "Use the final group_facts table to compare each group's alternatives; "
+            "its alternative order is arbitrary, not a ranking. Select one candidate per group."
         )
     return [
         {"role": "system", "content": system},

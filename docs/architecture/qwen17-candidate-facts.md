@@ -68,3 +68,22 @@ needs its own144 fresh requests, unchanged gates, fixed24 comparison and actual
 primary feedback closure. Failed semantic answers and infrastructure incidents
 remain recorded; exact durable outcomes can be recovered without another model
 call. Seven-red/two-blue training and the real draw-day mail schedule continue.
+
+The compact stochastic probe completed12 valid requests but only4/6 known-failure
+feedback slots correct. An actual prefix correctly identified the largest signed
+utility, then confused candidate IDs with group names and copied presentation
+order into its ranking. Deterministic sampling also retained a wrong display
+case. These results remain negative development evidence.
+
+The separate `candidate-facts-grouped-v3` view states the actual group names/count
+and repeats each group's supplied ID/utility/evidence facts in a final table.
+It retains original alternative order, supplies no maximum or derived ranking,
+and preserves every original context value. A real isolated PostgreSQL preflight
+checked120 contexts, including exact equality of both earlier views' message
+hashes and unchanged free ranking/selection schemas.
+
+Known-failure probes select a development direction; their deliberately biased
+case fraction does not replace or add a new owner qualification gate. A complete,
+structurally valid improved direction can proceed to its own144 fresh requests
+under an explicitly retained selection amendment. All formal qualification,
+latency, comparison, deployment and feedback-closure gates stay unchanged.
