@@ -119,8 +119,8 @@ def main():
     artifacts = Artifacts(settings, db)
     try:
         if args.command == "init":
-            db.migrate()
-            output({"schema": 17, "status": "initialized", "runtime": str(settings.runtime)})
+            version = db.migrate()
+            output({"schema": version, "status": "initialized", "runtime": str(settings.runtime)})
         elif args.command == "parent-pin":
             from .retained_parent import bootstrap
 
