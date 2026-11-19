@@ -58,6 +58,23 @@ docker compose run --rm worker status
 它不生成虚构的下一期预测，也不产生评价成绩。即使缺少下一期日程，收到新标签仍会更新模型。
 `--max-cycles`包括预测和纯学习任务，总预算耗尽如实暂停。
 
+## 大乐透开奖入库
+
+独立的 `compose.dlt.yaml` 从中国体彩官方接口回填已确认的大乐透开奖号码，并在 Next PostgreSQL
+的 `dlt_draws` 保存期号、开奖日期、前后区号码与来源。首次启用前先启动 Next 数据库，在包含
+`compose.dlt.yaml` 的仓库目录执行以下命令。若在独立工作树部署，将 `.env` 替换为 Next 私有环境文件的绝对路径。
+
+```bash
+docker compose --env-file .env -f compose.dlt.yaml build ingest
+docker compose --env-file .env -f compose.dlt.yaml run --rm -T ingest migrate
+docker compose --env-file .env -f compose.dlt.yaml run --rm -T ingest backfill
+docker compose --env-file .env -f compose.dlt.yaml up -d ingest
+```
+
+任务启动时补查历次遗漏，之后按北京时间周一、三、六 21:35 开始查当期结果，每 10 分钟重试至
+23:55，并每天 08:00 补查。需要立即补查时运行 `run --rm -T ingest sync`，查询进度用
+`logs ingest`，暂停用 `stop ingest`，均使用同一 Compose 文件和环境文件。
+
 ## 真正开奖前预测
 
 先从可靠来源核实下一期期号、开奖时间与截止时间，再登记未来日程。禁止用此命令补造历史预测。

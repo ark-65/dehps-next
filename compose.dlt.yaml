@@ -1,0 +1,31 @@
+name: dehps-next-dlt
+services:
+  ingest:
+    image: dehps-next:dlt-ingest
+    build: .
+    entrypoint: [python, -m, dehps_next.dlt_ingest]
+    command: [watch]
+    environment:
+      DEHPS_NEXT_DATABASE_URL: ${DEHPS_NEXT_DATABASE_URL:?Use the private Next environment file}
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    networks: [next]
+    cpuset: "0-19"
+    cgroup_parent: dehpsnext.slice
+    cpus: 0.5
+    mem_limit: 256m
+    pids_limit: 32
+    read_only: true
+    tmpfs: ["/tmp:size=16m"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    stop_grace_period: 40s
+    logging:
+      driver: local
+      options: {max-size: "5m", max-file: "3"}
+networks:
+  next:
+    external: true
+    name: dehps-next-p0p1
