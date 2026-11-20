@@ -2,13 +2,14 @@
 
 import copy
 import math
-from itertools import permutations
+from itertools import permutations, product
 
 from .errors import DomainError
 
 VERSION = "candidate-utility-enum-v1"
 FACTS_VERSION = "candidate-facts-enum-v2"
 RANKING_VERSION = "group-permutation-enum-v1"
+LINKED_RANKING_VERSION = "group-permutation-linked-selection-v2"
 
 
 def validate(profile):
@@ -16,7 +17,8 @@ def validate(profile):
         profile.get("observation_grammar") not in (VERSION, FACTS_VERSION)
         or profile.get("selector_contract") != "comparative-v4.6-grounded-short"
         or profile.get("ground_output_schema") is not True
-        or ("ranking_grammar" in profile and profile["ranking_grammar"] != RANKING_VERSION)
+        or ("ranking_grammar" in profile
+            and profile["ranking_grammar"] not in (RANKING_VERSION, LINKED_RANKING_VERSION))
     ):
         raise DomainError("SHORT_PROFILE_CHANGED", "Require the declared exact-observation grammar")
 
@@ -49,9 +51,34 @@ def bind(schema, context, profile):
                 "type": "array", "minItems": 1, "maxItems": len(keys),
                 "items": {"type": "string", "enum": keys},
             }
-    if profile.get("ranking_grammar") == RANKING_VERSION:
-        rankings = result["properties"]["rankings"]["properties"]
-        for group, ids in context["groups"].items():
-            # All permutations remain available. An item enum alone allows repeats.
-            rankings[group] = {"enum": [list(order) for order in permutations(ids)]}
-    return result
+    ranking_version = profile.get("ranking_grammar")
+    if ranking_version not in (RANKING_VERSION, LINKED_RANKING_VERSION):
+        return result
+
+    groups = context["groups"]
+    properties = result["properties"]
+    rankings = properties["rankings"]
+    orders = {group: [list(order) for order in permutations(ids)] for group, ids in groups.items()}
+    if ranking_version == RANKING_VERSION:
+        rankings["properties"] = {group: {"enum": allowed} for group, allowed in orders.items()}
+        return result
+
+    # Each branch permits all rank orders with its chosen first IDs and requires
+    # those same IDs in selection. The union permits every valid model choice.
+    alternatives = []
+    for first_ids in product(*groups.values()):
+        selected = dict(zip(groups, first_ids, strict=True))
+        branch_rankings = {
+            group: {"enum": [order for order in orders[group] if order[0] == first]}
+            for group, first in selected.items()
+        }
+        branch_selection = {group: {"enum": [first]} for group, first in selected.items()}
+        alternatives.append({
+            **result,
+            "properties": {
+                **properties,
+                "rankings": {**rankings, "properties": branch_rankings},
+                "selection": {**properties["selection"], "properties": branch_selection},
+            },
+        })
+    return {"anyOf": alternatives}
