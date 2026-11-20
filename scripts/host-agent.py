@@ -264,10 +264,12 @@ def sample(timing=None):
         # even when Docker's image inventory hangs or a new build is registered.
         "environment": disk.total,
         "backups": timing.call("owned_backups", size, runtime / "backups"),
+        # Staging can link to shared tool caches. Count link entries without
+        # traversing their targets. Application, inference and backup scans stay strict.
         "staging": timing.call("owned_staging", lambda: sum(
-            size(p)
+            size(p, allow_links=True)
             for p in runtime.iterdir()
-            if p.is_dir() and p.name not in ("application", "inference", "backups")
+            if p.name not in ("application", "inference", "backups") and (p.is_symlink() or p.is_dir())
         )),
         "logs": len(NAMES) * 15 * 1024**2,
     }
