@@ -7,6 +7,7 @@ import threading
 from psycopg import Error as DatabaseError
 from psycopg_pool import PoolTimeout
 
+from . import ark_cache_cli
 from .artifacts import Artifacts
 from .config import Settings
 from .data import DataService
@@ -106,8 +107,17 @@ def main():
     serve.add_argument("--port", type=int, default=8341)
     watcher = commands.add_parser("watch-source")
     watcher.add_argument("--interval", type=int, default=3600)
+    ark_cache_cli.arguments(commands)
     args = parser.parse_args()
     settings = Settings.from_env()
+    if args.command == "ark-cache":
+        try:
+            ark_cache_cli.run(args, settings, output)
+        except (DomainError, DatabaseError, PoolTimeout) as exc:
+            event("ark_cache_error", code=getattr(exc, "code", type(exc).__name__),
+                  message=str(exc) if isinstance(exc, DomainError) else getattr(exc, "sqlstate", None))
+            raise SystemExit(1) from exc
+        return
     if args.command == "serve":
         import uvicorn
 

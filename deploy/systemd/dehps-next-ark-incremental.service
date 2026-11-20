@@ -1,0 +1,6 @@
+[Unit]
+Description=Update the Next ARK replay cache after verified draws
+
+[Service]
+Type=oneshot
+ExecStart=%h/dehps-next/runtime/ark-release/scripts/ark-replay-cache.sh update

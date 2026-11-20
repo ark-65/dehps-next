@@ -90,6 +90,9 @@ class Database:
             if not c.execute("SELECT 1 FROM schema_migrations WHERE version=19").fetchone():
                 c.execute(files("dehps_next").joinpath("migrations/019_up.sql").read_text())
                 c.execute("INSERT INTO schema_migrations VALUES(19)")
+            if not c.execute("SELECT 1 FROM schema_migrations WHERE version=20").fetchone():
+                c.execute(files("dehps_next").joinpath("migrations/020_up.sql").read_text())
+                c.execute("INSERT INTO schema_migrations VALUES(20)")
             return c.execute("SELECT max(version) FROM schema_migrations").fetchone()["max"]
 
     def rows(self, sql, params=()):
