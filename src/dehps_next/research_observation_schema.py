@@ -2,11 +2,13 @@
 
 import copy
 import math
+from itertools import permutations
 
 from .errors import DomainError
 
 VERSION = "candidate-utility-enum-v1"
 FACTS_VERSION = "candidate-facts-enum-v2"
+RANKING_VERSION = "group-permutation-enum-v1"
 
 
 def validate(profile):
@@ -14,12 +16,13 @@ def validate(profile):
         profile.get("observation_grammar") not in (VERSION, FACTS_VERSION)
         or profile.get("selector_contract") != "comparative-v4.6-grounded-short"
         or profile.get("ground_output_schema") is not True
+        or ("ranking_grammar" in profile and profile["ranking_grammar"] != RANKING_VERSION)
     ):
         raise DomainError("SHORT_PROFILE_CHANGED", "Require the declared exact-observation grammar")
 
 
 def bind(schema, context, profile):
-    """Keep rankings free; each candidate may only copy its already supplied value."""
+    """Bind supplied facts and, when declared, all legal rank orders before generation."""
     validate(profile)
     result = copy.deepcopy(schema)
     records = result["properties"]["assessments"]["properties"]
@@ -46,4 +49,9 @@ def bind(schema, context, profile):
                 "type": "array", "minItems": 1, "maxItems": len(keys),
                 "items": {"type": "string", "enum": keys},
             }
+    if profile.get("ranking_grammar") == RANKING_VERSION:
+        rankings = result["properties"]["rankings"]["properties"]
+        for group, ids in context["groups"].items():
+            # All permutations remain available. An item enum alone allows repeats.
+            rankings[group] = {"enum": [list(order) for order in permutations(ids)]}
     return result

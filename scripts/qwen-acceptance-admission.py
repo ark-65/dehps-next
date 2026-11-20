@@ -2,10 +2,15 @@
 
 import json
 import time
+from datetime import datetime, time as wall_time, timedelta
 from pathlib import Path
 
+from dehps_next.calendar import CALENDAR, ZONE
+from dehps_next.training_window import status as training_window
+
 POLICY = {
-    "kind": "QWEN_ACCEPTANCE_IDLE_ADMISSION_V1",
+    "kind": "QWEN_ACCEPTANCE_IDLE_ADMISSION_V2",
+    "draw_pause_headroom_seconds": 900,
     "default_start_interval_seconds": 300,
     "idle_cooldown_seconds": 30,
     "desktop_idle_min_seconds": 120,
@@ -39,6 +44,24 @@ def decision(snapshot, current, last_start, last_wall):
     return max(0, last_start + last_wall + POLICY["idle_cooldown_seconds"] - current), "IDLE_SERIAL_COOLDOWN"
 
 
+def draw_hold(connection, timestamp):
+    clock = datetime.fromtimestamp(timestamp, ZONE)
+    window = training_window(connection, clock)
+    if window["paused"]:
+        return window["reason"]
+    for offset in range(8):
+        day = clock.date() + timedelta(days=offset)
+        if day.weekday() not in CALENDAR["weekdays"]:
+            continue
+        cutoff = datetime.combine(day, wall_time.fromisoformat(CALENDAR["prepare_time"]), ZONE)
+        if cutoff <= clock:
+            continue
+        if (cutoff - clock).total_seconds() <= POLICY["draw_pause_headroom_seconds"]:
+            return "DRAW_PAUSE_HEADROOM"
+        break
+    return None
+
+
 def wait(db, snapshot_path, event_path):
     rows = db.rows("""SELECT created_at,metrics,state FROM research_model_calls
         WHERE stage LIKE 'CANDIDATE_SELECTION_V4_%%' ORDER BY id DESC LIMIT 1""")
@@ -56,6 +79,10 @@ def wait(db, snapshot_path, event_path):
         if type(wall) not in (int, float) or wall < 0:
             wall = 300
         delay, reason = decision(snapshot, current, start, wall)
+        with db.pool.connection() as connection:
+            hold = draw_hold(connection, current)
+        if hold:
+            delay, reason = 10, hold
         event = {"observed_at": current, "reason": reason, "wait_seconds": round(delay, 3),
                  "snapshot_observed_at": snapshot.get("observed_at"), "last_call_start": start,
                  "last_call_wall_seconds": wall, "policy": POLICY["kind"]}
