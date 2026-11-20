@@ -11,6 +11,21 @@ def _rank(counts, size):
     return sorted(range(1, size + 1), key=lambda number: (-counts[number], number))
 
 
+def _counts(rows):
+    return Counter(ball for row in rows for ball in row["red"]), Counter(row["blue"] for row in rows)
+
+
+def _recent_frequency(rows):
+    red, blue = _counts(rows)
+    result = {"window": [rows[0]["issue"], rows[-1]["issue"]]}
+    for color, counts, size in (("red", red, 33), ("blue", blue, 16)):
+        result[color] = [
+            {"number": number, "rank": rank, "count": counts[number], "frequency": counts[number] / len(rows)}
+            for rank, number in enumerate(_rank(counts, size), 1)
+        ]
+    return result
+
+
 def _history(draws, needed, as_of):
     if len(draws) < needed:
         raise DomainError("ARK_INSUFFICIENT_HISTORY", f"Need {needed} draws, got {len(draws)}")
@@ -33,39 +48,48 @@ def _history(draws, needed, as_of):
     return rows
 
 
-def ark(draws, *, x, y, z, mode="replay", as_of=None):
+def ark(draws, *, x, y, z, y2=None, mode="replay", as_of=None):
     """Run ARK on consecutive Next draw records ordered from oldest to newest.
 
     ``forecast`` uses the final step for the next draw. Its issue and hit fields
     are unset. Target indices are one-based within the supplied draw sequence.
+    ``y2`` defaults to ``y`` and controls the separate recent number-frequency board.
     """
     if any(type(value) is not int or value < 1 for value in (x, y, z)) or y > x:
         raise DomainError("ARK_PARAMETERS", "Require positive integer x, y and z with y <= x")
+    y2 = y if y2 is None else y2
+    if type(y2) is not int or y2 < 1:
+        raise DomainError("ARK_PARAMETERS", "Require a positive integer y2")
     if mode not in ("replay", "forecast"):
         raise DomainError("ARK_PARAMETERS", "Mode must be replay or forecast")
 
     forecast = mode == "forecast"
     verified = z - int(forecast)
-    needed = x + y + (z if verified else 0)
+    lookback = max(x + y, y2)
+    needed = lookback + (z if verified else 0)
     cutoff = now() if as_of is None else timestamp(as_of)
     rows = _history(draws, needed, cutoff)
     offset = len(draws) - needed
-    targets = set(range(x + y, x + y + verified))
+    targets = set(range(lookback, lookback + verified))
     if forecast:
         targets.add(needed)
 
     # Each stored rank is measured using the window from before that draw.
     winning_ranks = {}
     steps = []
-    for origin in range(x, max(targets) + 1):
+    for origin in range(min(targets) - y, max(targets) + 1):
         actual = rows[origin] if origin < needed else None
+        is_target = origin in targets
         prior = rows[origin - x : origin]
-        if actual is not None and max(row["available_at"] for row in prior) >= actual["draw_at"]:
+        availability_window = max(x, y2) if is_target else x
+        required = rows[origin - availability_window : origin]
+        if actual is not None and max(row["available_at"] for row in required) >= actual["draw_at"]:
             raise DomainError("ARK_INSUFFICIENT_HISTORY", f"Prior results unavailable before {actual['issue']}")
 
-        red_order = _rank(Counter(ball for row in prior for ball in row["red"]), 33)
-        blue_order = _rank(Counter(row["blue"] for row in prior), 16)
-        if origin in targets:
+        red_counts, blue_counts = _counts(prior)
+        red_order = _rank(red_counts, 33)
+        blue_order = _rank(blue_counts, 16)
+        if is_target:
             recent = [winning_ranks[j] for j in range(origin - y, origin)]
             red_positions = _rank(Counter(rank for red, _ in recent for rank in red), 33)
             blue_positions = _rank(Counter(blue for _, blue in recent), 16)
@@ -78,6 +102,7 @@ def ark(draws, *, x, y, z, mode="replay", as_of=None):
                 "target_issue": actual["issue"] if actual is not None else None,
                 "frequency_window": [prior[0]["issue"], prior[-1]["issue"]],
                 "rank_window": [rows[origin - y]["issue"], prior[-1]["issue"]],
+                "y2_frequency": _recent_frequency(rows[origin - y2 : origin]),
                 "red": red,
                 "blue": blue,
                 "red_rank_order": red_positions,
@@ -96,6 +121,7 @@ def ark(draws, *, x, y, z, mode="replay", as_of=None):
     checked = steps[:verified]
     return {
         "mode": mode,
+        "y2": y2,
         "steps": steps,
         "verified_periods": verified,
         "red_coverage": sum(step["red_hits"] for step in checked) / (6 * verified) if verified else None,
