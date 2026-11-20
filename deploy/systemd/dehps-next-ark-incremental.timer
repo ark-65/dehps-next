@@ -1,0 +1,10 @@
+[Unit]
+Description=Check for newly verified Next draws every ten minutes
+
+[Timer]
+OnCalendar=*-*-* *:00/10:00 Asia/Shanghai
+Persistent=true
+Unit=dehps-next-ark-incremental.service
+
+[Install]
+WantedBy=timers.target
