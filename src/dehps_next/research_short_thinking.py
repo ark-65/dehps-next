@@ -16,6 +16,7 @@ TRANSPORT = "qwen-two-stage-budget-v1"
 THINKING_TOKENS = 512
 ANSWER_TOKENS = 1024
 CONTEXT_TOKENS = 16384
+CPU_PREFIX_PREFILL_SECONDS = 240
 CADENCE = {"min_interval_seconds": 1800, "min_new_feedback": 20}
 PERFORMANCE_GATE = {"mean_seconds_max": 240, "p95_seconds_max": 300}
 
@@ -150,7 +151,11 @@ def generate(db, artifacts, campaign, job, call, payload, logical_request, progr
                   "count_scope": "ANSWER_NOT_REQUESTED;THINK_COUNTS_IN_SEPARATE_PROVIDER_CALL"})
 
     try:
-        response = chat(first, thinking_progress, pulse, job, path="/api/generate", raw=True)
+        response = chat(
+            first, thinking_progress, pulse, job, path="/api/generate", raw=True,
+            prefill_seconds=(CPU_PREFIX_PREFILL_SECONDS if profile.get("backend", {}).get("engine") == "CPU"
+                             else None),
+        )
         text = response["message"]["content"] + response["message"]["thinking"]
         metrics = {k: response.get(k) for k in (
             "total_duration", "load_duration", "prompt_eval_count", "eval_count", "eval_duration", "done_reason"

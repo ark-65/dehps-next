@@ -99,7 +99,9 @@ class Resources:
 
         if (
             not job.get("local_stream_active")
-            or time.monotonic() - job.get("local_stream_progress_at", 0) > 180
+            or time.monotonic() > job.get(
+                "local_stream_prefill_deadline", job.get("local_stream_progress_at", 0) + 180
+            )
         ):
             raise DomainError("LOCAL_STREAM_STALLED", "No recent local generation progress")
         with self.db.pool.connection() as c, c.transaction():
