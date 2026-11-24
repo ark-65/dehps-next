@@ -3,12 +3,17 @@
 import hashlib
 import http.client
 import json
+import socket
 import time
-import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, wait
+from contextlib import closing, suppress
+from urllib.parse import urlsplit
 
 from .domain import canonical
 from .errors import DomainError
+
+FRAME_LIMIT = 128 * 1024
 
 
 def provider_error_code(error):
@@ -18,7 +23,55 @@ def provider_error_code(error):
     return "LOCAL_INFERENCE_UNAVAILABLE"
 
 
-def chat(payload, progress, pulse, job, *, silence_seconds=180, path="/api/chat", raw=False):
+def _lines(request, silence_seconds):
+    with urllib.request.urlopen(request, timeout=silence_seconds) as response:
+        while True:
+            yield response.readline(FRAME_LIMIT + 1)
+
+
+def _cpu_prefill_lines(request, pulse, deadline, silence_seconds):
+    """Check the worker's fences while the CPU provider prepares its first frame."""
+    url = urlsplit(request.full_url)
+    with closing(http.client.HTTPConnection(url.hostname, url.port, timeout=10)) as conn:
+        conn.request("POST", url.path, request.data, dict(request.header_items()))
+        stream_socket = conn.sock
+        stream_socket.settimeout(max(0.001, deadline - time.monotonic()))
+
+        def read_first():
+            response = conn.getresponse()
+            try:
+                if not 200 <= response.status < 300:
+                    raise DomainError("LOCAL_INFERENCE_UNAVAILABLE", "Local provider rejected streaming request")
+                return response, response.readline(FRAME_LIMIT + 1)
+            except BaseException:
+                response.close()
+                raise
+
+        with ThreadPoolExecutor(max_workers=1) as reader:
+            first = reader.submit(read_first)
+            try:
+                while not first.done():
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise DomainError("LOCAL_STREAM_STALLED", "CPU prefill produced no frame before its deadline")
+                    if not wait((first,), timeout=min(1, remaining)).done:
+                        pulse()
+            except BaseException:
+                with suppress(OSError):
+                    stream_socket.shutdown(socket.SHUT_RDWR)
+                with suppress(Exception):
+                    first.result()[0].close()
+                raise
+            response, line = first.result()
+        with response:
+            stream_socket.settimeout(silence_seconds)
+            yield line
+            while True:
+                yield response.readline(FRAME_LIMIT + 1)
+
+
+def chat(payload, progress, pulse, job, *, silence_seconds=180, path="/api/chat", raw=False,
+         prefill_seconds=None):
     from .research_agent import endpoint
 
     request = urllib.request.Request(
@@ -32,6 +85,8 @@ def chat(payload, progress, pulse, job, *, silence_seconds=180, path="/api/chat"
     pulsed_at = saved_at - 1
     job["local_stream_active"] = True
     job["local_stream_progress_at"] = saved_at
+    if prefill_seconds is not None:
+        job["local_stream_prefill_deadline"] = saved_at + prefill_seconds
 
     def save():
         progress(
@@ -48,12 +103,14 @@ def chat(payload, progress, pulse, job, *, silence_seconds=180, path="/api/chat"
     try:
         # The socket timeout applies only to a period without network progress.
         # Active generation has no cumulative wall deadline.
-        with urllib.request.urlopen(request, timeout=silence_seconds) as response:
-            while True:
-                line = response.readline(128 * 1024 + 1)
+        lines = (_lines(request, silence_seconds) if prefill_seconds is None else
+                 _cpu_prefill_lines(request, pulse, job["local_stream_prefill_deadline"], silence_seconds))
+        with closing(lines):
+            for line in lines:
+                job.pop("local_stream_prefill_deadline", None)
                 if not line:
                     raise DomainError("LOCAL_STREAM_INCOMPLETE", "Provider closed before its final receipt")
-                if len(line) > 128 * 1024:
+                if len(line) > FRAME_LIMIT:
                     raise DomainError(
                         "LOCAL_INFERENCE_RESPONSE_LIMIT", "A provider frame exceeds the physical buffer"
                     )
@@ -119,4 +176,5 @@ def chat(payload, progress, pulse, job, *, silence_seconds=180, path="/api/chat"
         raise DomainError("LOCAL_INFERENCE_UNAVAILABLE", "Local stream stalled or became unreadable") from exc
     finally:
         job["local_stream_active"] = False
+        job.pop("local_stream_prefill_deadline", None)
         save()
